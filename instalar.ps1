@@ -1,4 +1,5 @@
 # Instalador de Video PRO Studio (Windows). Solo ASCII a proposito: PowerShell 5.1 estropea las tildes de un .ps1 sin BOM.
+param([switch]$SinGpu)
 $ErrorActionPreference = 'Stop'
 Set-Location -Path $PSScriptRoot
 
@@ -60,7 +61,7 @@ Ok 'librerias instaladas'
 
 # ---------------------------------------------------------------- 4. GPU (opcional)
 Paso '4/5  Tarjeta grafica NVIDIA (hace la transcripcion mucho mas rapida)'
-if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+if ((-not $SinGpu) -and (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) {
     Ok 'Detecte una NVIDIA: instalo sus librerias (~1,5 GB)'
     & $vpy -m pip install -r requirements-gpu.txt
     if ($LASTEXITCODE -ne 0) { Aviso 'No pude instalar las librerias de la GPU: el programa funciona igual, pero la transcripcion ira por CPU (mas lenta).' } else { Ok 'GPU lista' }
