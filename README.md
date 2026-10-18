@@ -92,4 +92,4 @@ Componentes de terceros: letra [Rubik](https://github.com/googlefonts/rubik) (OF
 
 ---
 
-<sub>Hecho con ❤️ para creadores. <!-- PON AQUÍ EL ENLACE A TU CANAL / WEB --></sub>
+<sub>Hecho con ❤️ para creadores · [github.com/eljoseom-bot/Video-PRO-Studio](https://github.com/eljoseom-bot/Video-PRO-Studio)</sub>
