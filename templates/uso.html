@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Uso de Gemini{% endblock %}
+{% block body %}
+<h1>Uso de Gemini <span class="badge-gen">SOLO VÍDEOS</span></h1>
+<p class="sub">Cuántas peticiones te quedan hoy con cada modelo, del <b>mejor</b> al de <b>respaldo</b>. Los <b>Shorts</b> son otra herramienta y no cuentan aquí.</p>
+
+<div id="uso-avisos"></div>
+
+<!-- ============ LA PILA: cuánto llevas gastado de los MEJORES modelos hoy ============ -->
+<section class="card" id="hero">
+  <div class="hero-uso">
+    <div>
+      <div class="hero-pct" id="h-pct">–</div>
+      <div class="hero-k">de los mejores modelos, gastado hoy</div>
+    </div>
+    <div>
+      <div class="hero-medidor" id="h-medidor" title="La pila de los mejores modelos: cuanto más llena, menos peticiones buenas quedan hoy"><i style="width:0"></i><span class="marca50"></span></div>
+      <div class="hero-estado" id="h-estado"></div>
+      <div class="hero-det" id="h-det"></div>
+    </div>
+  </div>
+  <p class="hint" id="h-reinicio" style="margin:12px 0 0"></p>
+</section>
+
+<!-- ============ LA ESCALERA: del mejor modelo al de respaldo ============ -->
+<h2>Tus modelos, del mejor al de respaldo</h2>
+<section class="card">
+  <p class="hint" style="margin:0 0 12px">Esta lista se arma <b>sola</b>: el programa le pregunta a Google qué modelos hay y los ordena del mejor al peor (los Flash antes que los Flash-Lite y, dentro de cada grupo, la versión más nueva primero). Prueba siempre el primero; si está saturado o se le acaban las peticiones de hoy, pasa al siguiente, y así hacia abajo. <b>Cuando salga un modelo nuevo, entra solo en su sitio</b>: nadie tiene que escribir nombres. Todo se reinicia cada día.</p>
+  <div class="escalera" id="escalera"></div>
+  <div class="busca-modelos">
+    <button type="button" class="btn ghost sm" id="buscar-modelos">🔎 Buscar modelos nuevos</button>
+    <span class="hint" id="modelos-msg" style="margin:0"></span>
+  </div>
+  <p class="hint" id="modelos-info" style="margin:8px 0 0"></p>
+  <div id="modelos-aviso" style="margin-top:10px"></div>
+</section>
+
+<!-- ============ DÍA POR DÍA, POR MODELO ============ -->
+<h2>Día por día, por modelo</h2>
+<section class="card">
+  <div class="tabla-scroll"><table class="mapa" id="mapa"></table></div>
+  <p class="hint" style="margin:10px 0 0">Cada casilla son las peticiones de ese día a ese modelo (debajo del nombre, su límite diario). <b>Verde</b> = tranquilo, <b>amarillo</b> = cerca del tope, <b>rojo</b> = agotado.</p>
+</section>
+
+<section class="card">
+  <div class="uso-tiles">
+    <div class="tile"><span class="tile-k">Peticiones hoy</span><b id="t-pet">–</b><small id="t-pet-s"></small></div>
+    <div class="tile"><span class="tile-k">Tokens hoy</span><b id="t-tok">–</b><small id="t-tok-s"></small></div>
+    <div class="tile"><span class="tile-k">Últimos 7 días</span><b id="t-sem">–</b><small id="t-sem-s"></small></div>
+  </div>
+  <p class="hint" id="uso-desde" style="margin:12px 0 0"></p>
+</section>
+
+<div class="callout info" style="margin:18px 0">
+  <b>¿Es un límite diario, semanal o mensual?</b> <b>Diario</b> (y también por minuto). En el plan gratis <b>no hay tope semanal ni mensual</b>.
+  El contador de cada modelo se reinicia a las <b id="hora-reinicio">2:00</b> de este PC. Si te pasas, Google responde con un error y el programa pasa al siguiente modelo: <b>en el plan gratis nunca cobra</b>.
+</div>
+
+<details class="opciones" style="margin:0 0 18px">
+  <summary>Afinar: límites por modelo y por minuto (opcional)</summary>
+  <p style="margin:12px 0 10px">Los límites ya vienen por código (lo que enseña AI Studio para el plan gratis: <b>Flash 20 al día, Flash-Lite 500</b>) y se corrigen solos si Google dice otra cosa.
+    Si en <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">AI Studio → Rate limits</a> ves otros números, escríbelos aquí.
+    Si esa página sale vacía («No Cloud Projects Available»), estás en otra cuenta de Google: cámbiala arriba a la derecha.</p>
+  <div class="tabla-scroll"><table class="uso-tabla" id="tabla-modelos"><tbody><tr><td class="muted">Cargando…</td></tr></tbody></table></div>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
+    <button type="button" class="btn" id="guardar-lim">Guardar límites</button>
+    <label style="display:flex;align-items:center;gap:8px;margin:0;font-weight:600">Avisar a partir del
+      <input type="number" id="aviso-pct" min="10" max="99" value="80" style="width:74px;padding:5px 8px"> %</label>
+    <span id="msg-lim" style="font-size:14px"></span>
+  </div>
+</details>
+
+<h2>Cuánto gasta cada cosa</h2>
+<section class="card">
+  <div class="tabla-scroll"><table class="uso-tabla" id="tabla-tipos"></table></div>
+  <p class="hint" style="margin:10px 0 0">Referencia medida en un vídeo real de 13 min: el análisis gasta ≈16,5 mil tokens y <b>cada mejora ≈22–29 mil</b>
+    (1 petición), sea un corte, 1 tarjeta o 10 tarjetas. Por eso conviene <b>juntar todos los cambios en un solo comentario</b>.</p>
+</section>
+
+<h2>La clave de Gemini de los vídeos</h2>
+<section class="card" id="card-clave">
+  <p style="margin:0 0 8px">Los <b>Shorts</b> (otros programas) siguen con su clave de siempre y no se tocan. Para que los <b>vídeos</b> usen la suya
+    (proyecto «Video Pro»: su propia cuota y su propio consumo):</p>
+  <ol style="margin:0 0 6px;padding-left:20px;line-height:1.7">
+    <li>En <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener">AI Studio → API keys</a>, con la cuenta de tu canal, pulsa <b>Create API key</b>, elige el proyecto <b>Video Pro</b> y créala. Cópiala.</li>
+    <li>Pégala aquí. La pruebo con Google (1 petición) y <b>solo si funciona</b> la guardo: los vídeos siguientes ya la usan, sin reiniciar nada.</li>
+  </ol>
+  <div class="clave-form">
+    <input type="password" id="clave-nueva" autocomplete="new-password" spellcheck="false" placeholder="Pega aquí la clave nueva (empieza por AQ. o AIza…)">
+    <button type="button" class="btn" id="clave-guardar">Probar y guardar</button>
+  </div>
+  <div id="clave-msg" style="font-size:14px;min-height:22px"></div>
+  <p class="hint" style="margin:6px 0 0">Clave que usa ahora este programa: <b id="clave-actual">…</b> (solo se ven las 4 últimas letras, como en AI Studio). Nunca se guarda en Git.
+    Los datos de «Uso» empiezan de cero desde el momento del cambio, porque la cuota nueva también.</p>
+  <p class="hint" style="margin:8px 0 0">Ojo: <b>no actives la facturación</b> de ningún proyecto; con el plan gratis, si se acaba un modelo el programa sigue con el siguiente y nunca cobra.</p>
+</section>
+
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = n => (n == null ? '–' : Number(n).toLocaleString('es'));
+const corto = n => { n = Number(n) || 0; return n >= 1e6 ? (n/1e6).toFixed(1).replace('.', ',') + ' M' : n >= 1e3 ? (n/1e3).toFixed(1).replace('.', ',').replace(',0', '') + ' mil' : String(n); };
+const $ = id => document.getElementById(id);
+const nombreCorto = n => String(n).replace(/^Gemini\s*/, '');
+const fechaCorta = d => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd).toLocaleDateString('es', {weekday: 'short', day: 'numeric', month: 'short'}); };
+const MEDIDAS = {rpd: 'al día', rpm: 'por min', tpm: 'por min'};
+const MEDIDA_TXT = {rpd: 'diario', rpm: 'por minuto', tpm: 'de tokens por minuto'};
+let DATOS = null, SUCIO = false, REINICIO_FIN = 0, AUTOBUSCADO = false;
+const ROLES = {usando: '▶ AHORA USA', siguiente: 'SIGUE DESPUÉS', agotado: 'AGOTADO POR HOY', saturado: '⏸ SATURADO: SE SALTA UN RATO', no_disponible: 'NO DISPONIBLE HOY', fuera: 'FUERA DE LA CADENA'};
+const horaDe = ts => new Date(ts * 1000).toLocaleTimeString('es', {hour: 'numeric', minute: '2-digit'});
+function notaModelo(m){
+  const a = [];
+  if(m.rol === 'saturado') a.push('Google lo tiene saturado: se salta hasta las ' + horaDe(m.hasta) + ' y entonces se vuelve a probar (si responde, vuelve a ser el primero).');
+  if(m.rol === 'no_disponible') a.push('Google no deja usarlo ahora con tu clave gratis (no existe o su cuota gratis es 0): se vuelve a intentar a las ' + horaDe(m.hasta) + '.');
+  if(m.rol === 'agotado') a.push('Google dijo que se acabó su cuota de hoy: vuelve cuando se reinicie el día (' + DATOS.reinicio.local + ').');
+  if(m.alias) a.push('Es un atajo de Google al último modelo de su familia: va al final como red de seguridad y no suma a la pila de arriba.');
+  return a.join(' ');
+}
+
+/* ---- la pila grande ---- */
+function pintaHero(r){
+  const h = r.hero, med = $('h-medidor');
+  med.className = 'hero-medidor ' + (h.pct == null ? '' : h.estado);
+  if(h.pct == null){
+    $('h-pct').innerHTML = '<span class="muted">?</span>'; med.firstElementChild.style.width = '0';
+    $('h-estado').textContent = 'Falta un dato: los límites de tus modelos.';
+    $('h-det').innerHTML = 'Hoy llevas <b>' + num(r.hoy.intentos) + '</b> peticiones a Gemini, pero no sé de cuántas es el límite de esos modelos: escríbelos abajo, en «Afinar».';
+    $('h-reinicio').textContent = ''; return;
+  }
+  const p = h.pct, tier = h.tier === 'mejor' ? 'los mejores modelos' : 'los modelos de respaldo';
+  $('h-pct').innerHTML = (p < 10 && p > 0 ? p.toFixed(1).replace('.', ',') : Math.round(p)) + '<small>%</small>';
+  med.firstElementChild.style.width = Math.min(100, p) + '%';
+  $('h-estado').textContent = h.restantes === 0 ? '🔴 Se acabaron las peticiones de ' + tier + ' por hoy.'
+    : {ok: p < 50 ? '🟢 Vas bien: te sobran peticiones de ' + tier + '.' : '🟡 Llevas más de la mitad de las peticiones de ' + tier + '.',
+       aviso: '🟠 Ojo: te acercas al final de ' + tier + ' por hoy.', mal: '🔴 Casi sin peticiones de ' + tier + ': lo próximo saldrá con un modelo de respaldo.'}[h.estado];
+  const ahora = h.ahora, sig = h.siguiente;
+  $('h-det').innerHTML = `Te quedan <b>${num(h.restantes)}</b> de ${num(h.limite)} peticiones de ${tier} (unos <b>${num(h.videos)}</b> vídeo${h.videos === 1 ? '' : 's'} completo${h.videos === 1 ? '' : 's'}: ${h.por_video} peticiones cada uno = análisis + hasta ${h.por_video - 1} mejoras). `
+    + (ahora ? `Ahora usa <b>${esc(ahora.nombre)}</b> (quedan ${num(ahora.restantes)} de ${num(ahora.limite)})` + (sig ? `; cuando se agote sigue <b>${esc(sig.nombre)}</b>.` : '.')
+             : 'Todos los modelos de la cadena están agotados por hoy.');
+  $('h-reinicio').textContent = 'Se reinicia en ' + Math.floor(r.reinicio.en_seg / 3600) + ' h ' + String(Math.floor(r.reinicio.en_seg % 3600 / 60)).padStart(2, '0') + ' min (a las ' + r.reinicio.local + ' de este PC).';
+}
+
+/* ---- la escalera de modelos ---- */
+function pintaEscalera(r){
+  let n = 0;
+  $('escalera').innerHTML = r.modelos.map(m => {
+    const rpd = m.limite.rpd, est = m.rol === 'agotado' ? 'mal' : m.estado.rpd, pct = m.pct.rpd == null ? 0 : Math.min(100, m.pct.rpd);
+    const rol = ROLES[m.rol] || '', nota = notaModelo(m);
+    if(m.en_cadena) n++;
+    const num_ = m.restantes == null ? '<span class="muted">sin límite conocido</span>'
+      : `quedan <b>${num(m.restantes)}</b> de ${num(rpd)}${m.origen.rpd === 'estimado' ? ' <span class="muted" title="Cifra de AI Studio para el plan gratis; se corrige sola si Google dice otra">(estimado)</span>' : ''}`;
+    return `<div class="esc ${m.rol}"><div class="esc-n">${m.en_cadena ? n : '·'}</div><div>
+      <div class="esc-cab"><b>${esc(m.nombre)}</b><span class="tier ${m.tier}">${m.tier === 'mejor' ? 'MEJOR' : 'RESPALDO'}</span>${rol ? `<span class="rol ${m.rol}">${rol}</span>` : ''}</div>
+      <div class="esc-barra"><div class="medidor ${est}" title="${pct}% de su límite de hoy"><i style="width:${pct}%"></i></div><div class="esc-num">${num_}</div></div>${nota ? `<div class="esc-nota">${nota}</div>` : ''}</div></div>`;
+  }).join('');
+}
+
+/* ---- la búsqueda de modelos (sola cada 12 h y al analizar un vídeo; aquí también a mano) ---- */
+function pintaBusqueda(r){
+  const i = r.modelos_info || {}, usados = r.modelos.filter(m => m.en_cadena).length;
+  $('modelos-info').textContent = i.auto === false ? 'La búsqueda automática está apagada (ai.modelos_auto en config.yaml): manda la lista de config.yaml.'
+    : i.buscado ? 'Última búsqueda: ' + new Date(i.buscado * 1000).toLocaleString('es', {day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'})
+        + '. Google ofrece ' + i.descubiertos + ' modelos; el programa usa ' + usados + ' (los Flash y Flash-Lite de la versión 3 en adelante). Se repite sola cada ' + i.cada_horas + ' h y al analizar cada vídeo.'
+      : 'Aún no se ha preguntado a Google: se hará solo al analizar el próximo vídeo (o pulsa el botón).';
+  const so = i.sin_orden || [];
+  $('modelos-aviso').innerHTML = so.length
+    ? '<div class="callout warn">⚠️ Google ya ofrece ' + (so.length === 1 ? 'un modelo con un nombre' : so.length + ' modelos con nombres') + ' que no sé ordenar (<b>' + so.map(esc).join(', ') + '</b>). Por seguridad no se ' + (so.length === 1 ? 'usa' : 'usan') + ' hasta que se enseñe a ordenar esa familia.</div>' : '';
+}
+async function buscaModelos(auto){
+  const btn = $('buscar-modelos'), msg = $('modelos-msg');
+  btn.disabled = true; msg.textContent = 'Preguntando a Google…'; msg.style.color = '';
+  try{
+    const j = await (await fetch('/api/modelos/refrescar', {method: 'POST'})).json();
+    if(j.ok){
+      pinta(j.resumen);
+      msg.style.color = 'var(--ok)';
+      msg.textContent = j.nuevos.length ? '✔ ¡Hay modelos nuevos!: ' + j.nuevos.join(', ') + ' (ya están en la lista, en su sitio).' : '✔ Sin novedades: ' + j.cadena.length + ' modelos en la lista.';
+    }else{ msg.style.color = 'var(--bad)'; msg.textContent = '✖ ' + (j.error || 'No se pudo buscar.'); }
+  }catch(e){ msg.style.color = 'var(--bad)'; msg.textContent = '✖ No se pudo buscar: ' + e.message; }
+  btn.disabled = false;
+}
+$('buscar-modelos').addEventListener('click', () => buscaModelos(false));
+
+/* ---- el mapa día a día ---- */
+function pintaMapa(r){
+  const cols = r.modelos.filter(m => m.en_cadena || r.dias.some(d => (d.por_modelo[m.modelo] || 0) > 0));
+  const primero = r.dias.findIndex(d => d.intentos > 0), dias = r.dias.slice(Math.min(primero < 0 ? r.dias.length - 1 : primero, r.dias.length - 5));
+  const filas = [...dias].reverse().map(d => `<tr class="${d.dia === r.dia ? 'hoy' : ''}"><td class="f">${d.dia === r.dia ? '<b>hoy</b>' : fechaCorta(d.dia)}</td>${cols.map(m => {
+      const n = d.por_modelo[m.modelo] || 0, l = m.limite.rpd, p = l ? 100 * n / l : null;
+      const est = n === 0 ? 'cero' : p == null ? 'sin' : p >= 95 ? 'mal' : p >= r.limites.aviso_pct ? 'aviso' : 'ok';
+      return `<td class="${est}" title="${esc(m.nombre)}: ${n} peticiones${l ? ' de ' + l : ''}">${n || '·'}</td>`;
+    }).join('')}<td class="tot">${d.intentos || '·'}</td></tr>`).join('');
+  $('mapa').innerHTML = `<thead><tr><th></th>${cols.map(m => `<th>${esc(nombreCorto(m.nombre))}<small>${m.limite.rpd ? 'de ' + m.limite.rpd : ''}</small></th>`).join('')}<th>Total</th></tr></thead><tbody>${filas}</tbody>`;
+}
+
+function pintaAvisos(r){
+  const a = [];
+  if(r.hoy.cuota > 0) a.push(`<div class="callout warn" style="margin-bottom:12px">⚠️ Google dijo «te pasaste de cuota» <b>${r.hoy.cuota}</b> ${r.hoy.cuota === 1 ? 'vez' : 'veces'} hoy: ese modelo se agotó y el programa pasó al siguiente. No cobra nada (plan gratis).</div>`);
+  const pe = r.peor;
+  if(pe.estado === 'mal' || pe.estado === 'aviso'){
+    a.push(`<div class="callout ${pe.estado === 'mal' ? 'bad' : 'warn'}" style="margin-bottom:12px">${pe.estado === 'mal' ? '🔴' : '🟡'} <b>${esc((r.modelos.find(x => x.modelo === pe.modelo) || {}).nombre || pe.modelo)}</b> va por el <b>${Math.round(pe.pct)}%</b> de su límite ${MEDIDA_TXT[pe.medida]} en este minuto.</div>`);
+  }
+  $('uso-avisos').innerHTML = a.join('');
+}
+function pintaTiles(r){
+  const h = r.hoy;
+  $('t-pet').textContent = num(h.intentos);
+  $('t-pet-s').textContent = `${h.peticiones} respondieron · ${h.fallidos} saturadas o fallidas`;
+  $('t-tok').textContent = corto(h.entrada + h.salida);
+  $('t-tok-s').textContent = `entrada ${corto(h.entrada)} · salida ${corto(h.salida)} (con el «pensamiento»)`;
+  $('t-sem').textContent = num(r.semana.intentos);
+  $('t-sem-s').textContent = `peticiones · ${corto(r.semana.entrada + r.semana.salida)} tokens`;
+  $('hora-reinicio').textContent = r.reinicio.local;
+  $('uso-desde').textContent = r.clave_desde
+    ? `Cuenta desde que cambiaste la clave (${new Date(r.clave_desde * 1000).toLocaleString('es', {day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'})}): la cuota del proyecto nuevo empieza de cero. Las peticiones «saturadas» se suman por si acaso.`
+    : (r.desde ? `Cuenta desde el ${new Date(r.desde * 1000).toLocaleDateString('es', {day: 'numeric', month: 'long'})}; lo anterior está en AI Studio → Usage. Las peticiones «saturadas» se suman por si acaso: Google no aclara si cuentan.`
+              : 'Aún no hay ninguna petición apuntada: aparecerán aquí en cuanto el programa hable con Gemini.');
+}
+function celdaLimite(m, dim, usado, fmt){
+  const puesto = m.puesto[dim], det = m.detectado[dim];
+  const ph = det ? String(det) : (m.limite[dim] ? String(m.limite[dim]) : '?');
+  const medidor = m.pct[dim] == null ? '' : `<div class="medidor ${m.estado[dim]}" title="${m.pct[dim]}%"><i style="width:${Math.min(100, m.pct[dim])}%"></i></div>`;
+  return `<div class="uso-num">${fmt(usado)}</div><div class="uso-de">de <input class="lim-in" inputmode="numeric" data-m="${esc(m.modelo)}" data-d="${dim}" value="${puesto || ''}" placeholder="${esc(ph)}"
+    title="${det ? 'Google dijo en un error 429 que es ' + det : (m.origen[dim] === 'estimado' ? 'estimado (plan gratis); escribe otro si AI Studio dice distinto' : '')}"> ${MEDIDAS[dim]}</div>${medidor}`;
+}
+function pintaModelos(r){
+  if(SUCIO) return;                                   // no pisar lo que el autor está escribiendo
+  const filas = r.modelos.map(m => `<tr><td><b>${esc(m.nombre)}</b><div class="hint" style="margin:2px 0 0">${m.en_cadena ? '' : 'fuera de la cadena · '}${m.origen.rpd === 'estimado' ? 'límite estimado' : m.origen.rpd === 'puesto' ? 'límite puesto por ti' : m.origen.rpd === 'detectado' ? 'límite dicho por Google' : ''}</div></td>
+    <td>${celdaLimite(m, 'rpd', m.hoy.intentos, num)}</td><td>${celdaLimite(m, 'rpm', m.pico.peticiones_min, num)}</td><td>${celdaLimite(m, 'tpm', m.pico.entrada_min, corto)}</td></tr>`).join('');
+  $('tabla-modelos').innerHTML = `<thead><tr><th>Modelo</th><th>Peticiones hoy</th><th>Máx. en 1 minuto (hoy)</th><th>Tokens de entrada en 1 minuto (máx. hoy)</th></tr></thead><tbody>${filas}</tbody>`;
+  $('aviso-pct').value = r.limites.aviso_pct;
+  document.querySelectorAll('.lim-in').forEach(i => i.addEventListener('input', () => { SUCIO = true; $('msg-lim').textContent = ''; }));
+}
+function pintaTipos(r){
+  const t = Object.values(r.tipos);
+  $('tabla-tipos').innerHTML = t.length
+    ? `<thead><tr><th>Tipo de petición</th><th>Veces</th><th>Entrada media</th><th>Salida media</th></tr></thead><tbody>${t.map(x =>
+      `<tr><td><b>${esc(x.nombre)}</b></td><td>${num(x.n)}</td><td>${corto(x.entrada_media)}</td><td>${corto(x.salida_media)}</td></tr>`).join('')}</tbody>`
+    : '<tbody><tr><td class="muted">Todavía no hay datos: se irán llenando con tus vídeos.</td></tr></tbody>';
+}
+function pinta(r){
+  DATOS = r; REINICIO_FIN = Date.now() + r.reinicio.en_seg * 1000;
+  pintaAvisos(r); pintaHero(r); pintaEscalera(r); pintaBusqueda(r); pintaMapa(r); pintaTiles(r); pintaModelos(r); pintaTipos(r);
+  const i = r.modelos_info || {};                                  // al abrir la pestaña con la búsqueda caducada, se hace sola (una vez)
+  if(!AUTOBUSCADO){
+    AUTOBUSCADO = true;
+    if(i.auto !== false && (!i.buscado || Date.now() / 1000 - i.buscado > (i.cada_horas || 12) * 3600)) buscaModelos(true);
+  }
+}
+async function carga(){
+  try{ pinta(await (await fetch('/api/uso')).json()); }
+  catch(e){ $('uso-avisos').innerHTML = '<div class="callout bad">No pude leer el consumo: ' + esc(e.message) + '</div>'; }
+}
+async function guardaLimites(cuerpo, msgEl, ok){
+  try{
+    const j = await (await fetch('/api/uso/limites', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cuerpo)})).json();
+    if(!j.ok){ msgEl.textContent = j.error || 'No se pudo guardar.'; msgEl.style.color = 'var(--bad)'; return; }
+    SUCIO = false; pinta(j.resumen); msgEl.textContent = ok || '✔ Guardado'; msgEl.style.color = 'var(--ok)';
+  }catch(e){ msgEl.textContent = 'No se pudo guardar: ' + e.message; msgEl.style.color = 'var(--bad)'; }
+}
+$('guardar-lim').addEventListener('click', () => {
+  const modelos = {};
+  document.querySelectorAll('.lim-in').forEach(i => { (modelos[i.dataset.m] = modelos[i.dataset.m] || {})[i.dataset.d] = i.value; });
+  guardaLimites({modelos, aviso_pct: $('aviso-pct').value}, $('msg-lim'), '✔ Límites guardados');
+});
+
+/* ---- la clave nueva de los vídeos (la pega el autor; aquí se prueba con Google y solo si funciona se guarda) ---- */
+async function claveEstado(){
+  try{ const j = await (await fetch('/api/gemini/clave')).json(); $('clave-actual').textContent = j.hay ? '…' + j.ultimos4 : 'ninguna'; }catch(e){}
+}
+async function claveGuarda(){
+  const campo = $('clave-nueva'), msg = $('clave-msg'), btn = $('clave-guardar'), v = campo.value.trim();
+  if(!v){ msg.innerHTML = '<span style="color:var(--bad);font-weight:700">Pega primero la clave.</span>'; campo.focus(); return; }
+  btn.disabled = true; msg.innerHTML = '<span class="muted">Probándola con Google… (puede tardar hasta un minuto si Gemini está saturado)</span>';
+  try{
+    const j = await (await fetch('/api/gemini/clave', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({clave: v, aparte: true})})).json();
+    if(j.ok){
+      campo.value = '';
+      msg.innerHTML = '<span style="color:var(--ok);font-weight:800">✔ Guardada.</span> La clave nueva termina en …' + esc(j.ultimos4) + ' y funciona (respondió ' + esc(j.modelo) + '). Los próximos vídeos ya la usan; esta pestaña empieza de cero.';
+      claveEstado(); carga();
+    }else{
+      msg.innerHTML = '<span style="color:var(--bad);font-weight:800">✖ No la he cambiado.</span> ' + esc(j.error || 'No se pudo comprobar.');
+    }
+  }catch(e){ msg.innerHTML = '<span style="color:var(--bad);font-weight:800">✖ Error:</span> ' + esc(e.message); }
+  btn.disabled = false;
+}
+$('clave-guardar').addEventListener('click', claveGuarda);
+$('clave-nueva').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); claveGuarda(); } });
+claveEstado(); carga(); setInterval(carga, 20000);
+</script>
+{% endblock %}

@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Miniaturas{% endblock %}
+{% block body %}
+{% include "_tabs_miniaturas.html" %}
+<h1>🎨 Miniaturas</h1>
+<p class="hint" style="margin:0 0 14px;max-width:780px">Una miniatura <b>sin vídeo</b> (para un directo, por ejemplo). Tu cara, tus colores y tu estilo de cómic se ponen solos, como en las
+  miniaturas de tus vídeos; tú solo cuentas <b>qué quieres que tenga</b>, escribiéndolo o dictándolo. Es gratis (Cloudflare) y no toca las peticiones de los Flash que editan tus vídeos.</p>
+
+<section class="card mini-form" id="mini-form">
+  <label class="mini-lbl" for="mej-txt-miniatura">¿Qué quieres que tenga la miniatura?</label>
+  <div class="mini-fila">
+    <textarea id="mej-txt-miniatura" rows="4" maxlength="1200" spellcheck="true"
+      placeholder="Ej: Miniatura para mi directo de SEO de hoy. Una lupa gigante sobre una web con gráficas que suben, y un robot al lado revisando."></textarea>
+    <button type="button" class="dictado-btn" id="dictado-btn-miniatura" title="Dictar por voz" onclick="dictadoToggle('miniatura')" style="display:none">🎤</button>
+  </div>
+  <div class="mini-ayuda"><span id="dictado-estado-miniatura"></span><span class="muted" id="mini-cuenta"></span></div>
+
+  <div class="mini-lbl">Composición</div>
+  <div class="mini-formatos" id="mini-formatos"></div>
+
+  <div class="mini-opciones">
+    <label class="mini-campo"><span>Tu cara</span>
+      <select id="mini-gesto"></select></label>
+    <label class="mini-campo mini-titular"><span>Titular <span class="muted">(opcional, 2-4 palabras)</span></span>
+      <input type="text" id="mini-titular" maxlength="40" placeholder="Si lo dejas vacío, la IA propone uno"></label>
+    <label class="mini-check"><input type="checkbox" id="mini-sin-titular"> Sin titular</label>
+  </div>
+
+  <div class="mini-acciones">
+    <button type="button" class="btn lg" id="mini-generar">🎨 Generar</button>
+    <div id="mini-cupo" class="mini-cupo"></div>
+  </div>
+  <div id="mini-msg" class="mini-msg" aria-live="polite"></div>
+</section>
+
+<section id="mini-res" class="mini-res" style="display:none"></section>
+
+<section id="mini-hist-caja" style="display:none">
+  <h2 style="margin:22px 0 8px">Las últimas</h2>
+  <div class="mini-tira" id="mini-tira"></div>
+</section>
+
+<script src="{{ url_for('static', filename='mejorar.js') }}?v={{ ui_v }}"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const S = {items: [], sel: null, generando: false, paso: '', inicio: 0, datos: null, ultimoId: null, esperaId: null};
+let tPoll = null, tReloj = null;
+
+/* lo que hay en el formulario */
+function form(){
+  const f = document.querySelector('input[name=mini-formato]:checked');
+  return {texto: $('mej-txt-miniatura').value.trim(), formato: f ? f.value : 'derecha', gesto: $('mini-gesto').value,
+          titular: $('mini-titular').value.trim(), sin_titular: $('mini-sin-titular').checked};
+}
+function ponForm(it){                              // al elegir una miniatura de «Las últimas», el formulario se llena con lo que la hizo (así «↻» parte de ella)
+  $('mej-txt-miniatura').value = it.texto || '';
+  const r = document.querySelector(`input[name=mini-formato][value="${it.formato}"]`); if(r) r.checked = true;
+  $('mini-gesto').value = [...$('mini-gesto').options].some(o => o.value === (it.gesto || '')) ? (it.gesto || '') : '';
+  $('mini-titular').value = it.titular_pedido || '';
+  $('mini-sin-titular').checked = !!it.sin_titular;
+  cuenta(); pintaFormatos();
+}
+function cuenta(){ const n = $('mej-txt-miniatura').value.length; $('mini-cuenta').textContent = n ? n + ' / ' + (S.datos ? S.datos.max_texto : 1200) : ''; }
+
+function pintaFormatos(){
+  const d = S.datos; if(!d) return;
+  const actual = (document.querySelector('input[name=mini-formato]:checked') || {}).value || 'derecha';
+  $('mini-formatos').innerHTML = d.formatos.map(f => `
+    <label class="mini-formato${f.id === actual ? ' on' : ''}">
+      <input type="radio" name="mini-formato" value="${esc(f.id)}" ${f.id === actual ? 'checked' : ''} onchange="pintaFormatos()">
+      <b>${esc(f.nombre)}</b><small>${esc(f.ayuda)}</small></label>`).join('');
+}
+
+function pintaGestos(){
+  const d = S.datos; if(!d) return;
+  const act = $('mini-gesto').value;
+  $('mini-gesto').innerHTML = `<option value="">Automática (la IA elige según la idea)</option>` +
+    d.gestos.map(g => `<option value="${esc(g)}">${esc(g)}${g === d.defecto ? ' (la de siempre)' : ''}</option>`).join('');
+  $('mini-gesto').value = act;
+  if(!d.gestos.length) $('mini-gesto').innerHTML = `<option value="">No encuentro fotos tuyas en mis_caras/ (sale sin cara)</option>`;
+}
+
+function pintaCupo(){
+  const d = S.datos; if(!d) return;
+  const c = d.cupo, b = c.bateria;
+  const poco = c.quedan <= 3;
+  const rest = c.max ? Math.round(100 * c.quedan / c.max) : 0;
+  $('mini-cupo').innerHTML = `<span class="cupo-barra ${rest < 10 ? 'mal' : (rest < 30 ? 'aviso' : '')}" title="Te quedan ${c.quedan} de ${c.max}"><i style="width:${rest}%"></i></span>Hoy: <b class="${poco ? 'mini-poco' : ''}">${c.usadas} de ${c.max}</b> llamadas a Cloudflare usadas · quedan <b class="${poco ? 'mini-poco' : ''}">${c.quedan}</b>
+    <span class="muted">(cada intento cuenta, también los reintentos; ≈ 1 miniatura por llamada) · se reinicia a las ${esc(c.recarga)}</span><br>
+    <span class="muted">Cupo gratis de Cloudflare de hoy (se comparte con las miniaturas de tus vídeos): ${b.usadas} de ${b.tope} neuronas, caben ≈ ${b.quedan_miniaturas} miniaturas más.</span>`;
+}
+
+function pintaEstado(){
+  const g = $('mini-generar');
+  g.disabled = S.generando;
+  const msg = $('mini-msg');
+  if(S.generando){
+    const s = Math.round((Date.now() - S.inicio) / 1000);
+    msg.innerHTML = `<span class="mini-giro"></span> ${esc(S.paso || 'Trabajando…')} <span class="muted">· ${s} s · puedes seguir con otra cosa, esto no se pierde</span>`;
+  } else if(S.datos && S.datos.error){
+    msg.innerHTML = `<div class="callout bad">✖ ${esc(S.datos.error)}</div>`;
+  } else if(S.datos && !S.datos.disponible){
+    msg.innerHTML = `<div class="callout warn">⚠ ${esc(S.datos.motivo)} <a href="/inicio">Abrir «Primeros pasos»</a></div>`;
+  } else msg.innerHTML = '';
+}
+
+function pintaResultado(){
+  const caja = $('mini-res'), it = S.items.find(x => x.id === S.sel);
+  if(!it){ caja.style.display = 'none'; return; }
+  caja.style.display = '';
+  const cuando = new Date(it.ts * 1000).toLocaleString('es', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+  caja.innerHTML = `
+    <div class="mini-visor"><img src="${esc(it.url)}" alt="Miniatura generada"></div>
+    <div class="mini-info">
+      ${(it.avisos || []).map(a => `<div class="callout warn" style="margin:0 0 8px">⚠ ${esc(a)}</div>`).join('')}
+      <div class="mini-btns">
+        <a class="btn descargar" href="${esc(it.descarga)}">⬇ Descargar</a>
+        <button type="button" class="btn alt" id="mini-otra" ${S.generando ? 'disabled' : ''}
+          title="Con lo mismo que hay arriba: la MISMA idea con otro dibujo (sin gastar Gemini). Si cambiaste el texto, el formato, la cara o el titular: una idea nueva.">↻ Otra</button>
+        <button type="button" class="btn ghost" id="mini-quitar" title="Quitarla de «Las últimas»">🗑 Quitar</button>
+      </div>
+      <p class="muted" style="font-size:13px;margin:10px 0 0">
+        ${it.idea ? `<b>Idea:</b> ${esc(it.idea)}<br>` : ''}
+        ${it.titular ? `<b>Titular:</b> ${esc(it.titular)} · ` : ''}<b>Composición:</b> ${esc(((S.datos.formatos.find(f => f.id === it.formato)) || {}).nombre || it.formato)}
+        ${it.cara ? ` · <b>Cara:</b> ${esc(it.cara)}` : ''}<br>
+        ${it.misma_idea ? 'Misma idea que la anterior, otro dibujo' : 'Idea nueva'}${it.nombre_modelo ? ' · ' + esc(it.nombre_modelo) : ''} · ${Math.round(it.segundos || 0)} s · ${esc(cuando)}
+      </p>
+    </div>`;
+  $('mini-otra').onclick = () => genera(true);
+  $('mini-quitar').onclick = quita;
+}
+
+function pintaTira(){
+  const caja = $('mini-hist-caja');
+  caja.style.display = S.items.length ? '' : 'none';
+  $('mini-tira').innerHTML = S.items.map(it => `
+    <button type="button" class="mini-mini${it.id === S.sel ? ' on' : ''}" onclick="elige('${esc(it.id)}')" title="${esc(it.idea || it.texto)}">
+      <img loading="lazy" src="${esc(it.url)}" alt=""></button>`).join('');
+}
+
+function elige(id){
+  S.sel = id;
+  const it = S.items.find(x => x.id === id); if(it) ponForm(it);
+  pintaResultado(); pintaTira();
+}
+
+function repinta(){ pintaCupo(); pintaEstado(); pintaResultado(); pintaTira(); }
+
+/* hablar con el panel */
+async function carga(){
+  let d;
+  try{ d = await (await fetch('/api/miniaturas-sueltas')).json(); }catch(e){ return; }
+  const primera = !S.datos;
+  const eraGenerando = S.generando;
+  S.datos = d; S.items = d.items; S.generando = d.estado === 'generando'; S.paso = d.paso;
+  if(S.generando && !S.inicio) S.inicio = Date.now();
+  if(primera){ pintaFormatos(); pintaGestos(); if(d.items.length){ S.sel = d.items[0].id; ponForm(d.items[0]); } }
+  else if(eraGenerando && !S.generando){                  // acaba de terminar: se enseña la nueva (la primera de la lista)
+    S.inicio = 0;
+    if(!d.error && d.items.length){ S.sel = d.items[0].id; pintaTira(); }
+  }
+  if(!S.generando) S.inicio = 0;
+  if(eraGenerando && !S.generando && typeof cuotasRefresca === 'function') cuotasRefresca();     // la franja de arriba se pone al día al terminar
+  repinta();
+  clearTimeout(tPoll);
+  tPoll = setTimeout(carga, S.generando ? 1500 : 15000);
+  clearInterval(tReloj);
+  if(S.generando) tReloj = setInterval(pintaEstado, 1000);
+}
+
+async function genera(otra){
+  const f = form();
+  const msg = $('mini-msg');
+  if(f.texto.length < ((S.datos || {}).min_texto || 6)){
+    msg.innerHTML = '<div class="callout bad">✖ Cuéntale con unas palabras qué quieres en la miniatura (de qué va, qué elementos, qué contraste).</div>';
+    $('mej-txt-miniatura').focus(); return;
+  }
+  $('mini-generar').disabled = true;
+  if($('mini-otra')) $('mini-otra').disabled = true;
+  S.generando = true; S.paso = 'Empezando…'; S.inicio = Date.now(); if(S.datos) S.datos.error = '';
+  pintaEstado();
+  try{
+    const r = await fetch('/api/miniaturas-sueltas/generar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({...f, de: otra ? S.sel : null})});
+    const j = await r.json();
+    if(!j.ok){ S.generando = false; S.inicio = 0; msg.innerHTML = `<div class="callout bad">✖ ${esc(j.error || 'No se pudo empezar.')}</div>`; $('mini-generar').disabled = false; return; }
+  }catch(e){ S.generando = false; S.inicio = 0; msg.innerHTML = `<div class="callout bad">✖ No se pudo hablar con el panel: ${esc(e.message)}</div>`; $('mini-generar').disabled = false; return; }
+  carga();
+}
+
+async function quita(){
+  if(!S.sel || !confirm('¿Quitar esta miniatura de «Las últimas»? Se borra su imagen del PC.')) return;
+  try{ await fetch('/api/miniaturas-sueltas/' + encodeURIComponent(S.sel) + '/borrar', {method: 'POST'}); }catch(e){}
+  S.sel = null;
+  await carga();
+  if(S.items.length){ S.sel = S.items[0].id; ponForm(S.items[0]); repinta(); }
+}
+
+$('mini-generar').addEventListener('click', () => genera(false));
+$('mej-txt-miniatura').addEventListener('input', cuenta);
+$('mej-txt-miniatura').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); genera(false); } });
+$('mini-sin-titular').addEventListener('change', () => { $('mini-titular').disabled = $('mini-sin-titular').checked; });
+if(typeof SOPORTA_DICTADO !== 'undefined' && SOPORTA_DICTADO) $('dictado-btn-miniatura').style.display = '';
+carga();
+</script>
+{% endblock %}

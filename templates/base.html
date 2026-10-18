@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Vídeos{% endblock %} · Video PRO Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18' fill='%23FE330A' stroke='%2314100F' stroke-width='3'/%3E%3Ccircle cx='18' cy='18' r='7.5' fill='none' stroke='%23FFFBF2' stroke-width='3.6'/%3E%3Cpath d='M24 24l7 7' stroke='%23FFFBF2' stroke-width='4.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}?v={{ ui_v }}">
+</head>
+<body>
+
+{# ---- cabecera común: la misma en todas las páginas ---- #}
+{% set p = request.path %}
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="{{ url_for('videos_page') }}" title="Inicio">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#FE330A" stroke="#14100F" stroke-width="3"/><circle cx="18" cy="18" r="7.5" fill="none" stroke="#FFFBF2" stroke-width="3.6"/><path d="M24 24l7 7" stroke="#FFFBF2" stroke-width="4.2" stroke-linecap="round"/></svg>
+      <span><b>VIDEO PRO</b><small>Studio</small></span>
+    </a>
+    <nav class="nav" aria-label="Secciones">
+      <a href="{{ url_for('videos_page') }}" class="{{ 'on' if p == '/' or p.startswith('/job') or p.startswith('/videos') else '' }}">Mis vídeos</a>
+      <a href="{{ url_for('ediciones_page') }}" class="{{ 'on' if p.startswith('/ediciones') or p.startswith('/ilustraciones') else '' }}" title="Ejemplos de lo que edita el panel: cambios de escena, tarjetas, imágenes, suscríbete, like e ilustraciones">Ediciones</a>
+      {% set tools_on = p.startswith('/ideas') or p.startswith('/miniaturas') or p.startswith('/carruseles') or p.startswith('/posts') or p.startswith('/shorts-tiktok') %}
+      <details class="nav-menu{{ ' on' if tools_on else '' }}" id="nav-tools">
+        <summary title="Herramientas sueltas: ideas de vídeos, miniaturas, carruseles, posts y Shorts">Tools <span aria-hidden="true">▾</span></summary>
+        <div class="nav-drop" role="menu">
+          <a href="/ideas" role="menuitem" class="{{ 'on' if p.startswith('/ideas') else '' }}"><b>💡 Ideas</b><small>Qué grabar: lo que busca la gente, lo que rinde en tu nicho y lo que ya subiste</small></a>
+          <a href="/miniaturas" role="menuitem" class="{{ 'on' if p == '/miniaturas' else '' }}"><b>🎨 Miniaturas</b><small>Una miniatura sin vídeo (un directo, por ejemplo): tú la describes o la dictas</small></a>
+          <a href="/miniaturas-articulos" role="menuitem" class="{{ 'on' if p.startswith('/miniaturas-articulos') else '' }}"><b>📝 Imágenes destacadas</b><small>La imagen en blanco y negro, estilo cómic, de un artículo de tu web (nuevo o ya publicado)</small></a>
+          <a href="/carruseles" role="menuitem" class="{{ 'on' if p.startswith('/carruseles') else '' }}"><b>🖼️ Carruseles</b><small>El carrusel de Instagram y TikTok de un vídeo de YouTube, de un artículo de tu web o de un texto</small></a>
+          <a href="/posts" role="menuitem" class="{{ 'on' if p.startswith('/posts') else '' }}"><b>📣 Posts</b><small>Una sola idea en 1 o 2 imágenes (4:5 y 16:9) para tus redes, de un vídeo, un artículo o un texto</small></a>
+          <a href="/shorts-tiktok" role="menuitem" class="{{ 'on' if p.startswith('/shorts-tiktok') else '' }}"><b>🎬 Shorts · TikTok</b><small>Un Short vertical muy editado (cortes, animaciones, subtítulos, sonido) para YouTube, TikTok e Instagram</small></a>
+        </div>
+      </details>
+      <a href="/uso" class="{{ 'on' if p.startswith('/uso') else '' }}" title="Cuánto le pides a Gemini hoy y cuánto te queda de tu plan gratis">Uso</a>
+      <a href="/sistema" class="{{ 'on' if p.startswith('/sistema') else '' }}" title="Probar que todo funciona y hacer la copia de seguridad">Sistema</a>
+    </nav>
+    <div class="top-r">
+      <button type="button" class="ytchip" id="ytchip" onclick="ytAbrirWizard()" title="Conectar o gestionar tu cuenta de YouTube">
+        <span class="yd"></span><span id="ytchip-txt">YouTube…</span></button>
+      <button type="button" class="btn ghost sm" onclick="apagarPanel()" title="Cierra el panel del todo (no queda nada corriendo)">⏻ Cerrar</button>
+    </div>
+  </div>
+  <div class="cuotas" id="cuotas" aria-label="Lo que te queda hoy de cada cosa gratis"><span class="cuotas-t">Te queda hoy</span><span class="cuotas-c" id="cuotas-c"></span></div>
+</header>
+
+<main class="wrap">
+{% block body %}{% endblock %}
+</main>
+
+<script>
+/* Menú «Tools»: se abre con un clic, se cierra al tocar fuera, con Esc o al elegir. Va en posición fija (calculada al abrir) para que la barra de arriba, que en
+   pantallas pequeñas se desplaza de lado, no lo corte. */
+(function(){
+  const d = document.getElementById('nav-tools'); if(!d) return;
+  const drop = d.querySelector('.nav-drop');
+  function coloca(){
+    const r = d.querySelector('summary').getBoundingClientRect();
+    drop.style.top = Math.round(r.bottom + 6) + 'px';
+    drop.style.left = Math.max(8, Math.min(Math.round(r.left), window.innerWidth - drop.offsetWidth - 8)) + 'px';
+  }
+  d.addEventListener('toggle', () => { if(d.open) coloca(); });
+  document.addEventListener('click', e => { if(d.open && !d.contains(e.target)) d.open = false; });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && d.open){ d.open = false; d.querySelector('summary').focus(); } });
+  window.addEventListener('resize', () => { if(d.open) coloca(); });
+})();
+</script>
+
+<div id="yt-wizard" class="overlay" style="display:none">
+  <div class="modal" style="width:min(680px,100%)">
+    <h3 id="yw-titulo">▶ Tu cuenta de YouTube</h3>
+    <div id="yw-cuerpo"></div>
+    <div style="text-align:right;margin-top:14px">
+      <button class="btn ghost" onclick="document.getElementById('yt-wizard').style.display='none'">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">
+  <h4 id="toast-t"></h4>
+  <p id="toast-b"></p>
+  <button onclick="document.getElementById('toast').style.display='none'">Cerrar</button>
+</div>
+
+<div id="reauth-modal" class="overlay" style="display:none">
+  <div class="modal">
+    <h3>🔑 Reconectar YouTube (cada ~7 días)</h3>
+    <p class="muted" style="font-size:13.5px;margin:0 0 10px">
+      La app está en modo <b>Testing</b> en Google, así que el permiso para subir
+      vídeos caduca a los 7 días. Reconectar son 4 pasos y &lt;1 minuto.</p>
+    <div id="reauth-do" class="callout" style="margin:0 0 14px">
+      <button class="btn" id="reauth-btn-go" onclick="ytConnectGlobal()">Reconectar YouTube ahora</button>
+      <div id="reauth-do-msg" class="muted" style="font-size:12.5px;margin-top:8px">
+        Un clic: se abre Google en otra pestaña, autorizas y esto se pone en verde solo.
+        No hace falta entrar en ningún trabajo.</div>
+    </div>
+
+    <b>Si el botón no abre Google, hazlo a mano</b>
+    <ol>
+      <li>Inicia sesión con la cuenta de tu canal de YouTube. Saldrá
+          <i>"Google no ha verificado esta aplicación"</i> →
+          <b>Configuración avanzada</b> → <b>Ir a (nombre de la app) (no seguro)</b>
+          → marca las casillas y <b>Continuar</b>.</li>
+      <li>Vuelve a la pestaña de la app. Debe decir
+          <b>"Conectado · canal: ..."</b> y el contador vuelve a <b>7 días</b>.</li>
+    </ol>
+    <div class="altbox">
+      <b>Opción B — quitarte esto de encima para siempre (gratis):</b><br>
+      En <a href="https://console.cloud.google.com/auth/audience" target="_blank">Google Auth Platform → Audience</a>,
+      pulsa <b>Publish app</b> y confirma. Sale una pantalla de aviso una vez y ya:
+      el token deja de caducar y no vuelves a ver este recordatorio.
+    </div>
+    <div style="text-align:right;margin-top:14px">
+      <button class="btn" onclick="document.getElementById('reauth-modal').style.display='none'">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// la franja «Te queda hoy» (clipper/cuotas.py): cuatro medidores, barra llena = lo que QUEDA (verde > 30 %, ámbar, rojo < 10 %); se refresca sola y las herramientas la avisan al terminar algo
+function cuotasPinta(ms){
+  const c = document.getElementById('cuotas-c');
+  if(!c) return;
+  const n = v => Number(v).toLocaleString('es');
+  c.innerHTML = (ms || []).map(m => {
+    const grande = m.id === 'yt' ? Math.floor(m.quedan / 1600) : m.quedan;
+    const etq = {flash: 'Flash', lite: 'Lite', cf: 'imágenes', yt: 'subidas'}[m.id] || m.nombre;
+    const sub = m.id === 'yt' ? n(m.quedan) + ' u' : '/ ' + n(m.total);
+    return `<a class="cuota ${m.estado}" href="/uso" title="${cuotasEsc(m.detalle)}"><span class="cuota-ico">${m.icono}</span>`
+      + `<span class="cuota-txt"><b>${n(grande)}</b> <small>${cuotasEsc(etq)} ${sub}</small></span><span class="cuota-barra"><i style="width:${Math.max(m.quedan > 0 ? 4 : 0, m.pct)}%"></i></span></a>`;
+  }).join('');
+}
+async function cuotasRefresca(){
+  try{ cuotasPinta((await (await fetch('/api/cuotas')).json()).medidores); }catch(e){}
+}
+function cuotasEsc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+cuotasRefresca();
+setInterval(cuotasRefresca, 30000);
+document.addEventListener('visibilitychange', () => { if(!document.hidden) cuotasRefresca(); });
+async function apagarPanel(){
+  if(!confirm('¿Cerrar el panel del todo?')) return;
+  try{ await fetch('/apagar',{method:'POST'}); }catch(e){}
+  document.body.innerHTML = '<main class="wrap" style="padding:80px 22px"><h1>Panel cerrado</h1>'
+    + '<p class="sub">Ya no queda nada corriendo. Para volver a abrirlo: doble clic en <b>ABRIR PANEL.cmd</b>.</p></main>';
+}
+
+async function initReauth(){
+  const slot = document.getElementById('reauth-slot');
+  if(!slot) return;
+  try{
+    const s = await (await fetch('/youtube/status')).json();
+    if(!s.connected){ slot.innerHTML=''; return; }
+    let cls = 'ok', txt;
+    const d = s.days_left;
+    if(d == null){ txt = '🔑 YouTube: pon a cero el contador de 7 días'; }
+    else if(d <= 0){ cls='urgent'; txt = '🔴 Reconecta YouTube HOY'; }
+    else if(d <= 1){ cls='urgent'; txt = '🔴 Reconecta YouTube: queda 1 día'; }
+    else if(d <= 3){ cls='warn'; txt = `⚠️ Reconecta YouTube en ${d} días`; }
+    else { txt = `🔑 Reconexión YouTube en ${d} días`; }
+    slot.innerHTML = `<button class="reauth-btn ${cls}"
+      onclick="document.getElementById('reauth-modal').style.display='flex'">${txt}</button>`;
+  }catch(e){ slot.innerHTML=''; }
+}
+initReauth(); setInterval(initReauth, 60000);
+
+// ============ botón de YouTube siempre visible + guía de conexión ============
+function _yE(x){ return String(x==null?'':x).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+window._ytSt = {};
+async function ytChip(){
+  const chip = document.getElementById('ytchip'), txt = document.getElementById('ytchip-txt');
+  if(!chip) return;
+  let s = null;
+  try{ s = await (await fetch('/youtube/status')).json(); }catch(e){ return; }
+  window._ytSt = s || {};
+  chip.classList.remove('on','warn');
+  if(s.connected){
+    const d = s.days_left;
+    if(d != null && d <= 2){ chip.classList.add('warn'); txt.textContent = 'YouTube · reconecta en ' + d + ' d'; }
+    else { chip.classList.add('on'); txt.textContent = 'YouTube · ' + (s.channel || 'conectado'); }
+  } else if(s.connecting){ chip.classList.add('warn'); txt.textContent = 'YouTube · autorizando…'; }
+  else { txt.textContent = 'Conectar YouTube'; }
+  const w = document.getElementById('yt-wizard');
+  if(w && w.style.display === 'flex' && !window._ytWizardBusy) ytPintaWizard();
+}
+function ytAbrirWizard(){ document.getElementById('yt-wizard').style.display = 'flex'; ytPintaWizard(); ytChip(); }
+function ytPintaWizard(){
+  const s = window._ytSt || {}, el = document.getElementById('yw-cuerpo'), t = document.getElementById('yw-titulo');
+  if(s.connected){
+    t.textContent = '▶ YouTube conectado';
+    el.innerHTML = `<div class="yw-paso">Canal: <b>${_yE(s.channel||'?')}</b>`
+      + (s.days_left != null ? ` · el permiso caduca en <b>${s.days_left} día(s)</b> (la app está en modo «Pruebas» de Google).` : '.') + `</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn ghost" onclick="ytConectarWizard()">🔁 Reconectar</button>
+        <button class="btn ghost" onclick="ytDesconectarWizard()">Desconectar</button></div>
+      <div id="yw-msg" class="muted" style="font-size:12.5px;margin-top:10px"></div>`;
+    return;
+  }
+  t.textContent = '▶ Conectar tu cuenta de YouTube';
+  if(s.available === false && s.libs_ok === false){
+    el.innerHTML = `<div class="yw-paso">Faltan las librerías de Google en este PC. Cierra el panel, abre una terminal en la carpeta del
+      proyecto y ejecuta:<br><code>.venv\\Scripts\\pip install -r requirements.lock.txt</code><br>Luego abre el panel otra vez.</div>`;
+    return;
+  }
+  let h = '';
+  if(s.available === false){       // falta el client_secret.json
+    h += `<p class="muted" style="font-size:13.5px;margin:0 0 6px">Para que el panel pueda entrar a tu YouTube, Google pide un
+      <b>permiso de aplicación</b> (un archivo <code>client_secret.json</code>). Se crea <b>una sola vez</b> y es gratis:</p>
+      <div class="yw-paso"><b>Paso 1 — crear el permiso en Google Cloud (≈5 min)</b><ol>
+        <li>Entra con la cuenta de tu canal a <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud → proyecto nuevo</a> y créalo (nombre: <i>Video PRO Studio</i>).</li>
+        <li>Activa dos APIs con el botón <b>Habilitar</b>:
+          <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a> y
+          <a href="https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com" target="_blank" rel="noopener">YouTube Analytics API</a>.</li>
+        <li><a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Pantalla de consentimiento</a>: <b>Empezar</b> → nombre de la app y tu correo → público <b>Externo</b> → Crear.
+          Luego en <b>Público</b> → <b>Usuarios de prueba</b> → añade el correo de tu canal.</li>
+        <li><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">Clientes</a> → <b>Crear cliente</b> → tipo <b>Aplicación de escritorio</b> → Crear → <b>Descargar JSON</b>.</li>
+      </ol></div>
+      <div class="yw-paso"><b>Paso 2 — dame ese archivo</b>
+        <div style="margin-top:8px"><input type="file" id="yw-file" accept=".json,application/json" onchange="ytSubirClientSecret(this)"></div>`
+      + (s.ms_disponible ? `<div style="margin-top:10px" class="muted">…o, si prefieres ahorrarte los pasos: <button class="btn ghost sm" onclick="ytUsarBf6()">Usar el del proyecto de Shorts (otros programas)</button>
+          <br><span style="font-size:12px">Funciona igual, pero los dos proyectos compartirían la cuota diaria de YouTube (10.000 unidades: unas 6 subidas al día en total).</span></div>` : '')
+      + `<div id="yw-msg" style="font-size:13px;margin-top:8px"></div></div>`;
+  } else {
+    h += `<div class="yw-paso"><b>Todo listo para conectar.</b> Se abrirá Google en otra pestaña: elige la cuenta de tu canal, acepta los
+      permisos y vuelve aquí (se pone verde solo).<br>Si sale <i>«Google no ha verificado esta aplicación»</i>: <b>Configuración avanzada</b> → <b>Ir a la app (no seguro)</b> → marca las casillas → <b>Continuar</b>.
+      <div style="margin-top:10px"><button class="btn" id="yw-btn-conectar" onclick="ytConectarWizard()">Conectar YouTube ahora</button></div>
+      <div id="yw-msg" class="muted" style="font-size:13px;margin-top:8px">${s.error ? '<span style="color:var(--bad)">'+_yE(s.error)+'</span>' : ''}</div></div>`;
+  }
+  el.innerHTML = h;
+}
+async function ytSubirClientSecret(inp){
+  const msg = document.getElementById('yw-msg'); if(!inp.files.length) return;
+  msg.innerHTML = '<span class="muted">Comprobando el archivo…</span>';
+  const fd = new FormData(); fd.append('archivo', inp.files[0]);
+  let r = null;
+  try{ r = await (await fetch('/youtube/client-secret', {method:'POST', body: fd})).json(); }catch(e){ r = {ok:false, error:'no se pudo hablar con el panel'}; }
+  if(!r.ok){ msg.innerHTML = '<span style="color:var(--bad)">'+_yE(r.error||'error')+'</span>'; return; }
+  await ytChip(); ytPintaWizard();
+}
+async function ytUsarBf6(){
+  const msg = document.getElementById('yw-msg');
+  let r = null;
+  try{ r = await (await fetch('/youtube/client-secret', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({copiar_de_ms:true})})).json(); }
+  catch(e){ r = {ok:false, error:'no se pudo hablar con el panel'}; }
+  if(!r.ok){ msg.innerHTML = '<span style="color:var(--bad)">'+_yE(r.error||'error')+'</span>'; return; }
+  await ytChip(); ytPintaWizard();
+}
+async function ytConectarWizard(){
+  window._ytWizardBusy = true;
+  await ytConnectGlobal('yw-msg', 'yw-btn-conectar');
+  window._ytWizardBusy = false;
+  ytChip();
+}
+async function ytDesconectarWizard(){
+  await fetch('/youtube/disconnect', {method:'POST'}); await ytChip(); ytPintaWizard();
+}
+ytChip(); setInterval(ytChip, 30000);
+
+// --- reconectar YouTube desde cualquier pagina ---
+let _reauthPoll = null;
+async function ytConnectGlobal(msgId, btnId){
+  const msg = document.getElementById(msgId || 'reauth-do-msg');
+  const btn = document.getElementById(btnId || 'reauth-btn-go');
+  if(btn) btn.disabled = true;
+  if(msg) msg.innerHTML = 'Generando el enlace de autorizacion...';
+  let r = null;
+  try{ r = await (await fetch('/youtube/connect', {method:'POST'})).json(); }
+  catch(e){ r = {ok:false, error:'no se pudo hablar con el panel'}; }
+  if(!r || !r.ok){
+    if(btn) btn.disabled = false;
+    if(msg) msg.innerHTML = '<span style="color:var(--bad)">No se pudo iniciar: '
+      + ((r && r.error) || '?') + '</span>';
+    return;
+  }
+  window.open(r.auth_url, '_blank', 'noopener');
+  if(msg) msg.innerHTML = 'Se abrio Google en otra pestana. Autoriza con la cuenta del canal '
+    + 'de vídeos y vuelve aqui: esto se actualiza solo.<br>'
+    + '<a href="' + r.auth_url + '" target="_blank" rel="noopener">Si no se abrio, pulsa aqui</a>';
+  clearInterval(_reauthPoll);
+  _reauthPoll = setInterval(async ()=>{
+    try{
+      const st = await (await fetch('/youtube/status')).json();
+      if(st.connected){
+        clearInterval(_reauthPoll);
+        if(msg) msg.innerHTML = '<b style="color:var(--ok)">Conectado'
+          + (st.channel ? ' &middot; canal: ' + st.channel : '') + '</b>. Ya puedes cerrar esto.';
+        if(btn) btn.disabled = false;
+        initReauth(); ytChip();
+      }
+    }catch(e){}
+  }, 2500);
+  setTimeout(()=>clearInterval(_reauthPoll), 300000);   // 5 min y se rinde
+}
+
+// ============ aviso de "subida completa" (notificación + pop-up + sonido) ====
+// Pide permiso de notificación en el primer clic del usuario (gesto válido).
+window.addEventListener('click', function _once(){
+  try{ if(window.Notification && Notification.permission === 'default')
+         Notification.requestPermission(); }catch(e){}
+  window.removeEventListener('click', _once);
+}, {once:true});
+
+function _beep(){
+  try{
+    const A = new (window.AudioContext||window.webkitAudioContext)();
+    [880, 1320].forEach((f,i)=>{
+      const o = A.createOscillator(), g = A.createGain();
+      o.type='sine'; o.frequency.value=f;
+      o.connect(g); g.connect(A.destination);
+      const t = A.currentTime + i*0.16;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.15);
+      o.start(t); o.stop(t+0.16);
+    });
+  }catch(e){}
+}
+function _toast(titulo, cuerpo, err){
+  const el = document.getElementById('toast'); if(!el) return;
+  document.getElementById('toast-t').textContent = titulo;
+  document.getElementById('toast-b').textContent = cuerpo;
+  el.classList.toggle('err', !!err);
+  el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(()=>{ el.style.display='none'; }, 12000);
+}
+function avisoSubidaCompleta(lb){
+  const ok = lb.ok||0, err = lb.err||0;
+  const titulo = err ? `Subidas: ${ok} OK · ${err} con error`
+                     : `✅ ${ok} vídeo${ok===1?'':'s'} subido${ok===1?'':'s'} — todo listo`;
+  const cuerpo = err ? 'Revisa las que fallaron en el panel de Subidas.'
+                     : 'Ya están programados/publicados en tu canal de YouTube.';
+  _beep();
+  _toast(titulo, cuerpo, err);
+  try{
+    if(window.Notification && Notification.permission === 'granted')
+      new Notification(titulo, {body: cuerpo, tag:'video-edit-pro', renotify:true});
+  }catch(e){}
+}
+
+let _wasUploading = false, _seenBatch = null;
+try{ _seenBatch = localStorage.getItem('videos_batch_ts'); }catch(e){}
+async function watchUploads(){
+  if(document.hidden) return;
+  try{
+    const s = await (await fetch('/api/publish/estado')).json();
+    const lb = s.last_batch, ts = lb ? String(lb.ts) : null;
+    const fresco = lb && ts !== _seenBatch;
+    // caso normal: estábamos subiendo y ya no; o recarga justo al terminar
+    if(fresco && (_wasUploading && !s.subiendo
+                  || (!s.subiendo && (Date.now()/1000 - lb.ts) < 45))){
+      _seenBatch = ts;
+      try{ localStorage.setItem('videos_batch_ts', ts); }catch(e){}
+      avisoSubidaCompleta(lb);
+    } else if(fresco && !_wasUploading){
+      // primera lectura de la sesión: solo marca como visto, sin avisar
+      _seenBatch = ts;
+      try{ localStorage.setItem('videos_batch_ts', ts); }catch(e){}
+    }
+    _wasUploading = s.subiendo;
+  }catch(e){}
+}
+watchUploads(); setInterval(watchUploads, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+{# Asistente «Nuevo canal» / «Editar canal». Se abre desde el selector de canal de Vídeos PRO. #}
+<div id="cw" class="overlay" style="display:none" onclick="if(event.target===this)cwCerrar()">
+  <div class="modal cw-modal" role="dialog" aria-labelledby="cw-titulo">
+    <div class="cw-cab">
+      <h3 id="cw-titulo">➕ Nuevo canal</h3>
+      <button type="button" class="btn ghost sm" onclick="cwCerrar()">✕ Cerrar</button>
+    </div>
+    <p class="muted" style="margin:0 0 6px;font-size:14px">Cuéntale al panel cómo es tu canal. La IA (Gemini) lo leerá cada vez que edites un vídeo de este canal,
+      y las tarjetas, ilustraciones y la descripción saldrán con <b>tu</b> marca. En el paso 5 eliges <b>qué ediciones</b> quieres para este canal (escenas, tarjetas, Shorts…).</p>
+
+    <section class="cw-sec"><div class="paso"><div class="paso-n">1</div><div>
+      <h3>Cuéntale a la IA de qué va tu canal</h3>
+      <div class="row">
+        <div style="flex:1 1 260px"><label for="cw-nombre">Nombre del canal *</label><input type="text" id="cw-nombre" maxlength="40" placeholder="p. ej.: Conquer Gaming"></div>
+        <div style="flex:1 1 260px"><label for="cw-presentador">Presentador (opcional)</label><input type="text" id="cw-presentador" maxlength="80" placeholder="p. ej.: el autor"></div>
+      </div>
+      <label for="cw-tema" style="margin-top:10px">¿De qué trata? *</label>
+      <textarea id="cw-tema" rows="3" maxlength="700" placeholder="p. ej.: Canal de gaming en español: partidas de Battlefield y GTA con humor, clips y reacciones."></textarea>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1 1 260px"><label for="cw-audiencia">¿A quién le hablas?</label><input type="text" id="cw-audiencia" maxlength="300" placeholder="p. ej.: jóvenes de 15 a 25 años a los que les gustan los shooters"></div>
+        <div style="flex:1 1 260px"><label for="cw-tipo">¿Qué tipo de vídeos haces?</label><input type="text" id="cw-tipo" maxlength="300" placeholder="p. ej.: gameplay comentado, tutoriales, reacciones"></div>
+      </div>
+      <label style="margin-top:10px">Tono y estilo</label>
+      <div id="cw-tonos" class="cw-chips"></div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1 1 200px"><label for="cw-idioma">Idioma y acento</label><input type="text" id="cw-idioma" maxlength="80" value="Español latino"></div>
+        <div style="flex:2 1 320px"><label for="cw-formato">¿Cómo grabas?</label><input type="text" id="cw-formato" maxlength="300" placeholder="p. ej.: la pantalla del juego con mi cámara en una esquina"></div>
+      </div>
+      <label for="cw-reglas" style="margin-top:10px">Reglas especiales de edición <span class="muted" style="font-weight:500">(opcional)</span></label>
+      <textarea id="cw-reglas" rows="2" maxlength="600" placeholder="p. ej.: No cortes las risas ni los gritos. No pongas tarjetas de herramientas. Deja los momentos de silencio dramático."></textarea>
+      <details class="opciones" style="margin-top:10px"><summary>🗣️ Tu jerga, tus herramientas y tus marcas <span class="muted" style="font-weight:500">· para que se escriban bien (opcional)</span></summary>
+        <label for="cw-vocabulario" style="margin-top:8px">Palabras que sueles decir y que el programa suele escribir mal</label>
+        <textarea id="cw-vocabulario" rows="2" maxlength="900" placeholder="Separadas por comas. p. ej.: Battlefield, killstreak, clutch, Conker"></textarea>
+        <label for="cw-nombres" style="margin-top:8px">Tus herramientas, productos o marcas <span class="muted" style="font-weight:500">(una por línea: «Nombre: qué es»)</span></label>
+        <textarea id="cw-nombres" rows="3" maxlength="2500" placeholder="Mi Curso Pro: mi curso para aprender a editar&#10;Editor X: el programa de edición que uso"></textarea>
+        <div class="hint">Whisper (la transcripción) las escribe bien, y las tarjetas del vídeo solo enseñan nombres que se puedan confirmar con esta lista o con lo que dices.</div>
+        <label class="mini-chk" style="margin-top:8px"><input type="checkbox" id="cw-cen-on" onchange="$('cw-cen-box').style.display = this.checked ? '' : 'none'"> Silenciar palabrotas en el audio</label>
+        <div id="cw-cen-box" style="display:none"><label for="cw-cen-pal" style="margin-top:6px">Las palabras a silenciar (separadas por comas)</label>
+          <textarea id="cw-cen-pal" rows="2" maxlength="900" placeholder="palabra1, palabra2"></textarea></div>
+      </details>
+      <details class="opciones" style="margin-top:10px"><summary>Esto es lo que leerá la IA (puedes retocarlo)</summary>
+        <textarea id="cw-contexto" rows="6" style="margin-top:8px" oninput="CW.contextoEditado=true"></textarea>
+        <div class="hint">Se arma solo con lo que rellenas arriba. Si lo cambias a mano, se usará tal cual.</div>
+      </details>
+    </div></div></section>
+
+    <section class="cw-sec"><div class="paso"><div class="paso-n">2</div><div>
+      <h3>Tus colores y tu letra</h3>
+      <div id="cw-colores" class="cw-colores"></div>
+      <div class="row" style="margin-top:8px">
+        <div><label for="cw-f-titulo">Letra de los títulos</label><select id="cw-f-titulo"></select></div>
+        <div><label for="cw-f-numero">Letra de los números</label><select id="cw-f-numero"></select></div>
+        <div><label for="cw-f-texto">Letra del texto</label><select id="cw-f-texto"></select></div>
+      </div>
+      <div class="hint">¿Otra letra? Copia su archivo <code>.ttf</code> a la carpeta <code>fonts</code> del proyecto y aparecerá aquí.</div>
+      <div class="cw-prev"><img id="cw-prev-tarjetas" alt="Así se verán tus tarjetas"><div class="hint">Así se verán tus tarjetas (es el mismo dibujo que usa el render).</div></div>
+    </div></div></section>
+
+    <section class="cw-sec"><div class="paso"><div class="paso-n">3</div><div>
+      <h3>La descripción de tus vídeos en YouTube</h3>
+      <div class="row">
+        <div style="flex:1 1 260px"><label for="cw-e-web">Tu web</label><input type="text" id="cw-e-web" placeholder="https://…"></div>
+        <div style="flex:1 1 260px"><label for="cw-e-youtube">Tu canal de YouTube</label><input type="text" id="cw-e-youtube" placeholder="https://www.youtube.com/@…"></div>
+      </div>
+      <label style="margin-top:10px">Tus redes <span class="muted" style="font-weight:500">(las que dejes vacías no salen)</span></label>
+      <div id="cw-redes" class="cw-redes"></div>
+      <div class="row" style="margin-top:8px">
+        <div><label for="cw-e-correo">Correo de contacto</label><input type="text" id="cw-e-correo" placeholder="hola@…"></div>
+        <div><label for="cw-e-correo_secundario">Correo secundario</label><input type="text" id="cw-e-correo_secundario"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:2 1 300px"><label for="cw-e-cta_texto">Llamado a la acción <span class="muted" style="font-weight:500">(opcional)</span></label><input type="text" id="cw-e-cta_texto" maxlength="90" placeholder="p. ej.: ¿Quieres jugar conmigo?"></div>
+        <div style="flex:2 1 300px"><label for="cw-e-cta_url">Su enlace</label><input type="text" id="cw-e-cta_url" placeholder="https://…"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:2 1 300px"><label for="cw-hashtags">Hashtags <span class="muted" style="font-weight:500">(hasta 5; la IA elige uno)</span></label><input type="text" id="cw-hashtags" placeholder="#gaming #battlefield #humor"></div>
+        <div style="flex:1 1 200px"><label for="cw-sus-texto">Tarjeta de suscripción</label><input type="text" id="cw-sus-texto" maxlength="40" placeholder="¡SUSCRÍBETE!"></div>
+        <div style="flex:2 1 300px"><label for="cw-sus-extra">Su frase de apoyo</label><input type="text" id="cw-sus-extra" maxlength="90" placeholder="Si te está gustando el video, no te pierdas el próximo"></div>
+      </div>
+    </div></div></section>
+
+    <section class="cw-sec"><div class="paso"><div class="paso-n">4</div><div>
+      <h3>Dónde sale tu cámara</h3>
+      <div class="hint" style="margin:0 0 8px">Sirve para acercarte a tu cara cuando opinas. Si en tus grabaciones no sale tu cámara, elige «no tengo».</div>
+      <div class="cw-chips">
+        <label class="mini-chk"><input type="radio" name="cw-cam" value="si" checked onchange="cwCamModo()"> Sale mi cámara en la grabación</label>
+        <label class="mini-chk"><input type="radio" name="cw-cam" value="no" onchange="cwCamModo()"> No tengo cámara en pantalla</label>
+      </div>
+      <div id="cw-cam-si" style="margin-top:8px">
+        <div class="row" style="align-items:flex-end">
+          <div style="flex:2 1 260px"><label for="cw-inbox">Elige un vídeo que ya hayas subido</label><select id="cw-inbox"></select></div>
+          <div style="flex:1 1 110px"><label for="cw-seg">Segundo</label><input type="number" id="cw-seg" value="10" min="0" step="1"></div>
+          <div style="flex:0 0 auto"><button type="button" class="btn ghost" onclick="cwFrame()">🖼️ Ver fotograma</button></div>
+        </div>
+        <div id="cw-frame" class="cw-frame" style="display:none"><img id="cw-frame-img" alt="Fotograma de tu grabación" draggable="false"><div id="cw-rect" class="cw-rect" style="display:none"></div></div>
+        <div id="cw-cam-info" class="hint">Arrastra sobre el fotograma para marcar el recuadro de tu cámara.</div>
+        <div style="margin-top:8px;max-width:360px"><label for="cw-zoom">Cuánto acercar tu cara: <b id="cw-zoom-v">1.7</b>×</label>
+          <input type="range" id="cw-zoom" min="1.2" max="3" step="0.1" value="1.7" oninput="$('cw-zoom-v').textContent=this.value"></div>
+      </div>
+    </div></div></section>
+
+    <section class="cw-sec"><div class="paso"><div class="paso-n">5</div><div>
+      <h3>Qué ediciones quieres en este canal</h3>
+      <div class="hint" style="margin:0 0 8px">Todo esto lo hace el programa solo, pero no tiene por qué servirle a todos los canales. Marca lo que quieres y quita lo que no:
+        solo saldrá en los vídeos de <b>este</b> canal. Puedes cambiarlo cuando quieras con «Editar canal».</div>
+      <div id="cw-presets" class="cw-chips" style="margin-bottom:8px"></div>
+      <div id="cw-ediciones"></div>
+    </div></div></section>
+
+    <section class="cw-sec"><div class="paso"><div class="paso-n">6</div><div>
+      <h3>Tu cara y tu marca <span class="muted" style="font-weight:500;font-size:14px">(opcional)</span></h3>
+      <div class="hint" style="margin:0 0 8px">Se guardan <b>solo en tu PC</b> y las usan las miniaturas, los carruseles y los posts. Si no subes nada, esas piezas salen sin tu cara ni tu logo.
+        Esto se sube al momento, no hace falta guardar el canal.</div>
+      <div class="row">
+        <div style="flex:1 1 260px"><label for="mm-retrato">Tu retrato <span id="mm-retrato-ok" class="muted"></span></label><input type="file" id="mm-retrato" accept="image/*" onchange="mmImagen('retrato', this)"></div>
+        <div style="flex:1 1 260px"><label for="mm-logo">Tu logo <span id="mm-logo-ok" class="muted"></span></label><input type="file" id="mm-logo" accept="image/*" onchange="mmImagen('logo', this)"></div>
+      </div>
+      <label style="margin-top:12px">Tus caras (recortes en PNG con el <b>fondo transparente</b>)</label>
+      <div class="row" style="align-items:flex-end">
+        <div><label for="mm-gesto">Gesto</label><select id="mm-gesto"></select></div>
+        <div><label for="mm-mira">Mira hacia</label><select id="mm-mira"></select></div>
+        <div style="flex:1 1 220px"><label for="mm-cara">Archivo</label><input type="file" id="mm-cara" accept="image/png"></div>
+        <div><button type="button" class="btn ghost" onclick="mmCara()">⬆ Subir</button></div>
+      </div>
+      <div class="hint">¿Tu foto tiene fondo? Quítaselo gratis en remove.bg, en Canva o con Photoshop y súbela como PNG. Con 3 o 4 gestos (feliz, sorpresa, pensando…) ya hay variedad.</div>
+      <div id="mm-msg" class="hint"></div>
+      <div id="mm-caras" class="cw-chips" style="margin-top:8px"></div>
+    </div></div></section>
+
+    <div id="cw-msg" style="margin:6px 0;font-size:14px"></div>
+    <div class="cw-pie">
+      <button type="button" class="btn lg" id="cw-guardar" onclick="cwGuardar()">Crear canal</button>
+      <button type="button" class="btn ghost" onclick="cwCerrar()">Cancelar</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn ghost sm" id="cw-borrar" style="display:none" onclick="cwBorrar()">🗑 Quitar este canal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function $(id){ return document.getElementById(id); }
+const CW = {editar: '', opts: null, cam: null, contextoEditado: false, previo: '', t: null, tt: null};
+const cwClamp = v => Math.max(0, Math.min(1, v));
+
+async function cwOpciones(){
+  if(CW.opts) return CW.opts;
+  CW.opts = await (await fetch('/api/canales')).json();
+  const o = CW.opts;
+  $('cw-tonos').innerHTML = o.tonos.map(t => `<label class="mini-chk"><input type="checkbox" value="${t}" onchange="cwCambio()"> ${t}</label>`).join('');
+  $('cw-colores').innerHTML = o.colores.map(c => `<label class="cw-color"><input type="color" id="cw-c-${c.clave}" value="${c.defecto.toLowerCase()}" oninput="cwCambio(true)"><span>${c.nombre}<small id="cw-h-${c.clave}">${c.defecto}</small></span></label>`).join('');
+  const fu = o.fuentes.map(f => `<option value="${f}">${f.replace('.ttf','')}</option>`).join('');
+  for(const [id, def] of [['titulo','Rubik-ExtraBold.ttf'],['numero','Rubik-Black.ttf'],['texto','Rubik-Medium.ttf']]){
+    $('cw-f-' + id).innerHTML = fu; $('cw-f-' + id).value = o.fuentes.includes(def) ? def : o.fuentes[0]; $('cw-f-' + id).onchange = () => cwCambio(true);
+  }
+  $('cw-redes').innerHTML = o.redes.map(r => `<div><label for="cw-e-${r.clave}">${r.nombre}</label><input type="text" id="cw-e-${r.clave}" placeholder="https://…"></div>`).join('');
+  cwEdPinta();
+  $('cw-inbox').innerHTML = o.inbox.length ? o.inbox.map(n => `<option>${n}</option>`).join('') : '<option value="">(aún no has subido ningún vídeo)</option>';
+  for(const id of ['nombre','tema','audiencia','tipo','idioma','presentador','formato','reglas','e-web']) $('cw-' + id).addEventListener('input', () => cwCambio());
+  return o;
+}
+function cwEdicion(){
+  const e = {}; document.querySelectorAll('#cw-ediciones input[data-ed]').forEach(i => { e[i.dataset.ed] = i.checked; }); return e;
+}
+function cwEdPon(valores){
+  document.querySelectorAll('#cw-ediciones input[data-ed]').forEach(i => { if(i.dataset.ed in valores) i.checked = !!valores[i.dataset.ed]; });
+  cwEdCuenta();
+}
+function cwEdCuenta(){
+  const t = document.querySelectorAll('#cw-ediciones input[data-ed]'), on = [...t].filter(i => i.checked).length;
+  const el = $('cw-ed-cuenta'); if(el) el.textContent = on + ' de ' + t.length + ' ediciones encendidas';
+}
+function cwEdPinta(){
+  const o = CW.opts; if(!o || !o.ediciones) return;
+  $('cw-presets').innerHTML = o.presets.map(p => `<button type="button" class="btn ghost sm" title="${p.ayuda}" onclick='cwEdPon(${JSON.stringify(p.valores)})'>${p.nombre}</button>`).join('')
+    + '<span id="cw-ed-cuenta" class="muted" style="margin-left:8px;font-size:13px"></span>';
+  $('cw-ediciones').innerHTML = o.ediciones.map(g => `<details class="opciones" open style="margin-top:8px"><summary><b>${g.grupo}</b> <span class="muted" style="font-weight:500">· ${g.ayuda}</span></summary>
+    <div style="display:grid;gap:6px;margin-top:8px">${g.items.map(i => `<label class="mini-chk" style="align-items:flex-start;gap:8px">
+      <input type="checkbox" data-ed="${i.id}" ${i.defecto ? 'checked' : ''} onchange="cwEdCuenta()">
+      <span><b>${i.nombre}</b><br><span class="muted" style="font-size:13px">${i.ayuda}</span></span></label>`).join('')}</div></details>`).join('');
+  cwEdCuenta();
+}
+function cwPerfil(){
+  return {tema: $('cw-tema').value, audiencia: $('cw-audiencia').value, tipo: $('cw-tipo').value, idioma: $('cw-idioma').value,
+          presentador: $('cw-presentador').value, formato: $('cw-formato').value, reglas: $('cw-reglas').value,
+          tono: [...document.querySelectorAll('#cw-tonos input:checked')].map(i => i.value)};
+}
+function cwMarca(){
+  const m = {}; for(const c of CW.opts.colores) m[c.clave] = $('cw-c-' + c.clave).value.toUpperCase();
+  m.fuente_titulo = $('cw-f-titulo').value; m.fuente_numero = $('cw-f-numero').value; m.fuente_texto = $('cw-f-texto').value; return m;
+}
+function cwEnlaces(){
+  const e = {}; for(const k of ['web','youtube','correo','correo_secundario','cta_texto','cta_url', ...CW.opts.redes.map(r => r.clave)]){ const v = $('cw-e-' + k).value.trim(); if(v) e[k] = v; }
+  return e;
+}
+function cwDatos(){
+  const sin = document.querySelector('input[name=cw-cam]:checked').value === 'no';
+  const z = parseFloat($('cw-zoom').value);
+  return {editar: CW.editar, nombre: $('cw-nombre').value, perfil: cwPerfil(), marca: cwMarca(), enlaces: cwEnlaces(),
+          hashtags: $('cw-hashtags').value, suscribete: {texto: $('cw-sus-texto').value, extra: $('cw-sus-extra').value},
+          sin_camara: sin, camara: (!sin && CW.cam) ? {...CW.cam, zoom_cara: z} : null,
+          contexto_manual: CW.contextoEditado ? $('cw-contexto').value : '', edicion: cwEdicion(),
+          vocabulario: $('cw-vocabulario').value, nombres_propios: $('cw-nombres').value,
+          censura: {enabled: $('cw-cen-on').checked, palabras: $('cw-cen-pal').value}};
+}
+function cwCambio(marca){
+  for(const c of (CW.opts ? CW.opts.colores : [])) $('cw-h-' + c.clave).textContent = $('cw-c-' + c.clave).value.toUpperCase();
+  clearTimeout(CW.t);
+  CW.t = setTimeout(async () => {
+    if(!CW.contextoEditado){
+      try{ const r = await (await fetch('/api/canales/contexto', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({nombre: $('cw-nombre').value, perfil: cwPerfil(), enlaces: {web: $('cw-e-web').value}})})).json(); $('cw-contexto').value = r.contexto; }catch(e){}
+    }
+    if(marca || !CW.previo) cwPrevia();
+  }, 350);
+}
+async function cwPrevia(){
+  try{
+    const r = await fetch('/api/canales/tarjetas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({marca: cwMarca(), suscribete: {texto: $('cw-sus-texto').value, extra: $('cw-sus-extra').value}})});
+    if(!r.ok) return; const url = URL.createObjectURL(await r.blob()); $('cw-prev-tarjetas').src = url; CW.previo = url;
+  }catch(e){}
+}
+function cwCamModo(){ $('cw-cam-si').style.display = document.querySelector('input[name=cw-cam]:checked').value === 'no' ? 'none' : ''; }
+async function cwFrame(){
+  const n = $('cw-inbox').value; if(!n){ $('cw-cam-info').textContent = 'Sube antes un vídeo en el paso 1 del formulario de Vídeos PRO y vuelve aquí.'; return; }
+  $('cw-cam-info').textContent = 'Sacando el fotograma…';
+  const fd = new FormData(); fd.append('inbox', n); fd.append('seg', $('cw-seg').value || 10);
+  try{
+    const r = await fetch('/api/canales/frame', {method:'POST', body: fd});
+    if(!r.ok){ $('cw-cam-info').textContent = (await r.json()).error || 'No pude sacar el fotograma.'; return; }
+    $('cw-frame-img').src = URL.createObjectURL(await r.blob()); $('cw-frame').style.display = ''; cwRect();
+    $('cw-cam-info').textContent = 'Arrastra sobre el fotograma para marcar el recuadro de tu cámara.';
+  }catch(e){ $('cw-cam-info').textContent = 'No pude sacar el fotograma.'; }
+}
+function cwRect(){
+  const r = $('cw-rect'); if(!CW.cam){ r.style.display = 'none'; return; }
+  r.style.display = ''; r.style.left = CW.cam.x * 100 + '%'; r.style.top = CW.cam.y * 100 + '%'; r.style.width = CW.cam.w * 100 + '%'; r.style.height = CW.cam.h * 100 + '%';
+  $('cw-cam-info').textContent = `Cámara marcada: ${Math.round(CW.cam.w * 100)}% × ${Math.round(CW.cam.h * 100)}% del vídeo. Arrastra otra vez para cambiarla.`;
+}
+(function(){
+  let ini = null; const fr = $('cw-frame'), img = $('cw-frame-img');
+  const pos = e => { const b = img.getBoundingClientRect(); return {x: cwClamp((e.clientX - b.left) / b.width), y: cwClamp((e.clientY - b.top) / b.height)}; };
+  fr.addEventListener('pointerdown', e => { ini = pos(e); fr.setPointerCapture(e.pointerId); e.preventDefault(); });
+  fr.addEventListener('pointermove', e => { if(!ini) return; const p = pos(e); CW.cam = {x: Math.min(ini.x, p.x), y: Math.min(ini.y, p.y), w: Math.abs(p.x - ini.x), h: Math.abs(p.y - ini.y)}; cwRect(); });
+  fr.addEventListener('pointerup', () => { ini = null; if(CW.cam && (CW.cam.w < 0.04 || CW.cam.h < 0.04)){ CW.cam = null; cwRect(); } });
+})();
+
+function cwLlena(info){
+  const p = info.perfil || {}, m = info.marca || {}, e = info.enlaces || {};
+  $('cw-nombre').value = info.nombre || ''; for(const k of ['tema','audiencia','tipo','idioma','presentador','formato','reglas']) $('cw-' + k).value = p[k] || (k === 'idioma' ? 'Español latino' : '');
+  document.querySelectorAll('#cw-tonos input').forEach(i => i.checked = (p.tono || []).includes(i.value));
+  for(const c of CW.opts.colores) $('cw-c-' + c.clave).value = (m[c.clave] || c.defecto).toLowerCase();
+  for(const [id, k] of [['titulo','fuente_titulo'],['numero','fuente_numero'],['texto','fuente_texto']]){ const f = (m[k] || '').replace('fonts/', ''); if(f) $('cw-f-' + id).value = f; }
+  for(const k of ['web','youtube','correo','correo_secundario','cta_texto','cta_url', ...CW.opts.redes.map(r => r.clave)]) $('cw-e-' + k).value = e[k] || '';
+  $('cw-hashtags').value = (info.hashtags || []).join(' ');
+  $('cw-sus-texto').value = (info.cta_suscribete || {}).texto || ''; $('cw-sus-extra').value = (info.cta_suscribete || {}).extra || '';
+  CW.cam = info.camara ? {x: info.camara.x, y: info.camara.y, w: info.camara.w, h: info.camara.h} : null;
+  document.querySelector(`input[name=cw-cam][value=${(info.camara || info.camara_defecto) ? 'si' : 'no'}]`).checked = true; cwCamModo();   // un canal nuevo empieza con «sale mi cámara»
+  $('cw-zoom').value = (info.camara || {}).zoom_cara || 1.7; $('cw-zoom-v').textContent = $('cw-zoom').value;
+  $('cw-contexto').value = info.contexto || ''; CW.contextoEditado = false;
+  $('cw-vocabulario').value = (info.vocabulario || []).join(', ');
+  $('cw-nombres').value = Object.entries(info.nombres_propios || {}).map(([k, v]) => k + ': ' + v).join('\n');
+  const cen = info.censura || {}; $('cw-cen-on').checked = !!cen.enabled; $('cw-cen-pal').value = (cen.palabras || []).join(', '); $('cw-cen-box').style.display = cen.enabled ? '' : 'none';
+  cwEdPinta(); cwEdPon(info.edicion || {});          // lo que el canal eligió; lo demás, el valor de fábrica
+}
+async function mmCarga(){
+  try{
+    const e = await (await fetch('/api/mi-marca')).json(); CW.mm = e;
+    $('mm-gesto').innerHTML = e.gestos.map(g => `<option value="${g}">${g}</option>`).join(''); $('mm-mira').innerHTML = e.miradas.map(g => `<option value="${g}">${g}</option>`).join('');
+    $('mm-retrato-ok').textContent = e.retrato ? '✅ subido' : ''; $('mm-logo-ok').textContent = e.logo ? '✅ subido' : '';
+    $('mm-caras').innerHTML = e.caras.length ? e.caras.map(c => `<span class="mini-chk" style="gap:8px"><img src="/mi-marca/caras/${encodeURIComponent(c.archivo)}" alt="" style="height:44px;border-radius:6px;background:#eee">${c.gesto} · ${c.mira}
+      <button type="button" class="btn ghost sm" title="Quitar" onclick="mmBorra('${c.archivo.replace(/'/g, "\\'")}')">✕</button></span>`).join('') : '<span class="muted">Aún no has subido ninguna cara.</span>';
+  }catch(e){}
+}
+async function mmImagen(tipo, input){
+  if(!input.files.length) return; const fd = new FormData(); fd.append('tipo', tipo); fd.append('archivo', input.files[0]);
+  $('mm-msg').textContent = 'Subiendo…';
+  const j = await (await fetch('/api/mi-marca/imagen', {method: 'POST', body: fd})).json(); $('mm-msg').textContent = j.mensaje || ''; input.value = ''; mmCarga();
+}
+async function mmCara(){
+  const f = $('mm-cara').files[0]; if(!f){ $('mm-msg').textContent = 'Elige primero el archivo PNG de tu cara.'; return; }
+  const fd = new FormData(); fd.append('gesto', $('mm-gesto').value); fd.append('mira', $('mm-mira').value); fd.append('archivo', f);
+  $('mm-msg').textContent = 'Subiendo…';
+  const j = await (await fetch('/api/mi-marca/cara', {method: 'POST', body: fd})).json(); $('mm-msg').textContent = j.mensaje || ''; if(j.ok) $('mm-cara').value = ''; mmCarga();
+}
+async function mmBorra(archivo){
+  if(!confirm('¿Quitar esta cara?')) return;
+  await fetch('/api/mi-marca/cara/borrar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({archivo})}); mmCarga();
+}
+async function cwAbrir(slug){
+  await cwOpciones(); mmCarga(); CW.editar = slug || ''; CW.contextoEditado = false; CW.cam = null;
+  $('cw-msg').textContent = ''; $('cw-frame').style.display = 'none';
+  $('cw-titulo').textContent = slug ? '✏️ Editar canal' : '➕ Nuevo canal'; $('cw-guardar').textContent = slug ? 'Guardar cambios' : 'Crear canal';
+  $('cw-borrar').style.display = slug ? '' : 'none';
+  if(slug){ const r = await (await fetch('/api/canales/' + slug)).json(); if(r.ok) cwLlena(r.canal); }
+  else { cwLlena({camara_defecto: true, perfil: {idioma: 'Español latino'}, marca: {}, enlaces: {}}); $('cw-contexto').value = ''; cwCambio(true); }
+  cwPrevia(); $('cw').style.display = 'flex';
+}
+function cwCerrar(){ $('cw').style.display = 'none'; const s = $('canal-pro'); if(s && s.value === '__nuevo__') s.value = window._canalPrevio || 'ejemplo'; canalBoton(); }
+async function cwGuardar(){
+  $('cw-guardar').disabled = true; $('cw-msg').innerHTML = '<span class="muted">Guardando…</span>';
+  try{
+    const r = await fetch('/api/canales', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cwDatos())}); const j = await r.json();
+    if(!j.ok){ $('cw-msg').innerHTML = '<div class="callout bad">' + (j.errores || [j.error || 'No se pudo guardar']).map(x => '• ' + x).join('<br>') + '</div>'; return; }
+    canalesRepinta(j.canales, j.slug); window._canalPrevio = j.slug; $('cw').style.display = 'none';
+  }catch(e){ $('cw-msg').innerHTML = '<div class="callout bad">No se pudo guardar: ' + e.message + '</div>'; }
+  finally{ $('cw-guardar').disabled = false; }
+}
+async function cwBorrar(){
+  if(!CW.editar || !confirm('¿Quitar este canal? Se guarda en la carpeta canales/_papelera por si lo quieres recuperar.')) return;
+  const j = await (await fetch('/api/canales/' + CW.editar + '/borrar', {method:'POST'})).json();
+  if(j.ok){ canalesRepinta(j.canales, 'ejemplo'); $('cw').style.display = 'none'; }
+}
+if(location.hash === '#nuevo-canal') cwAbrir('');   // enlace directo al asistente
+</script>

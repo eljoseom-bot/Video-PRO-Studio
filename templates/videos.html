@@ -1,0 +1,1021 @@
+{% extends "base.html" %}
+{% block title %}Mis vídeos{% endblock %}
+{% block body %}
+{% set estado_es = {'queued':'En cola','running':'Procesando','done':'Terminado','error':'Con error','cancelled':'Cancelado','paused':'En pausa'} %}
+
+{% if not (canales | selectattr('propio') | list) %}
+<section class="callout" style="margin:0 0 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+  <div style="flex:1 1 300px"><b>👋 Antes de tu primer vídeo, crea TU canal.</b><br>
+    <span class="muted">Cuéntale al programa cómo es tu canal (tema, colores, enlaces, cámara, cara y qué ediciones quieres). Son 6 pasos cortos y se puede cambiar cuando quieras.</span></div>
+  <button type="button" class="btn lg" onclick="cwAbrir('')">➕ Crear mi canal</button>
+  <a class="btn ghost" href="/inicio">🚀 Primeros pasos</a>
+</section>
+{% endif %}
+
+<section class="hero">
+  <h1>¿Qué vídeo editamos hoy?</h1>
+  <p class="sub">Sube tu grabación y el panel hace el resto: quita el relleno, mueve la cámara, pone tarjetas,
+    ilustraciones y música, y te deja título, miniatura y descripción listos. Todo sale en <b>horizontal (16:9)</b> a 1080p60.</p>
+</section>
+
+<details class="opciones" id="opciones-motor" style="margin-bottom:18px">
+  <summary>⚙️ Opciones · Renderiza por <b id="motor-resumen">{{ '⚡ GPU' if motor_activo == 'gpu' else '🖥️ CPU' }}</b>
+    · La IA ve el vídeo: <b id="vision-resumen">{{ '👁 Sí' if ia_ve_video else 'No' }}</b></summary>
+  <p style="margin:10px 0 8px">Con qué renderiza CADA vídeo (el análisis con Gemini es igual en los dos casos: esto solo cambia el paso de ffmpeg).
+    Se aplica desde el próximo vídeo o mejora, sin reiniciar el panel.</p>
+  <div class="fuente-tabs" role="tablist" id="motor-tabs">
+    <button type="button" data-v="auto" class="{{ 'on' if motor_pedido == 'auto' }}" onclick="motorElige('auto')">🔁 Automático (recomendado)</button>
+    <button type="button" data-v="gpu" class="{{ 'on' if motor_pedido == 'gpu' }}" onclick="motorElige('gpu')">⚡ Siempre GPU</button>
+    <button type="button" data-v="cpu" class="{{ 'on' if motor_pedido == 'cpu' }}" onclick="motorElige('cpu')">🖥️ Siempre CPU</button>
+  </div>
+  <p class="hint" style="margin:8px 0 0">{% if hay_gpu %}Esta máquina SÍ tiene una GPU NVIDIA que ffmpeg sabe usar: con «Automático» o «Siempre GPU» se renderiza por GPU (mucho más rápido).
+    {% else %}Esta máquina no tiene (o ffmpeg no encuentra) una GPU NVIDIA usable: se renderiza por CPU aunque elijas «Siempre GPU» — se avisa en el log, nunca rompe el render.{% endif %}</p>
+  <span id="motor-msg" class="hint" style="margin-top:6px;display:block"></span>
+
+  <div style="border-top:1px solid var(--line-soft);margin-top:14px;padding-top:12px">
+    <p style="margin:0 0 8px"><b>👁 ¿Que la IA VEA el vídeo?</b> <span class="muted">(experimento)</span> Antes de editar, Gemini
+      <b>Flash-Lite</b> mira una copia pequeña de tu grabación (1 fotograma por segundo, sin audio) y le cuenta al director qué se
+      ve en cada momento: qué hay en pantalla, dónde haces clic, qué cifras se leen. Gratis: gasta de las 500 peticiones diarias de
+      Flash-Lite, no de las 20 de los mejores modelos. Una sola vez por grabación: las mejoras reusan lo que vio.</p>
+    <div class="fuente-tabs" role="tablist" id="vision-tabs">
+      <button type="button" data-v="1" class="{{ 'on' if ia_ve_video }}" onclick="visionElige(true)">👁 Sí, que lo vea</button>
+      <button type="button" data-v="0" class="{{ 'on' if not ia_ve_video }}" onclick="visionElige(false)">🙈 No: solo la transcripción (como siempre)</button>
+    </div>
+    <p class="hint" style="margin:8px 0 0">Para comparar: genera un vídeo con «Sí» y dale «🔀 Reshuffle» con «No» (o al revés); cada
+      versión dice si la IA lo vio. Suma unos minutos (preparar y subir la copia). En el plan gratis, Google puede usar lo que se le
+      manda para mejorar sus productos: la grabación entera, también lo que luego se corta.</p>
+    <span id="vision-msg" class="hint" style="margin-top:6px;display:block"></span>
+  </div>
+</details>
+
+{# el autor (2026-10-04): «en 90 días van a haber 90 videos… ¿cómo va a ser la sostenibilidad?» — lo que ocupa cada vídeo, cuánto tarda en llenarse el disco y cómo liberarlo #}
+<details class="opciones" id="espacio" style="margin-bottom:18px">
+  <summary>💾 Espacio · <b id="esp-resumen">midiendo…</b></summary>
+  <div id="esp-cuerpo" style="margin-top:10px"><span class="hint">Midiendo lo que ocupa cada cosa…</span></div>
+</details>
+
+<div class="modes" role="tablist" aria-label="Qué quieres hacer">
+  <button type="button" class="mode active" id="vtab-btn-pro" role="tab" onclick="vtabIr('pro')">
+    <span class="mi">✨</span>
+    <span><b>Vídeos PRO</b><small>Edición completa de un vídeo tuyo, de punta a punta</small></span>
+    <span class="mtag">EL PRINCIPAL</span>
+  </button>
+  <button type="button" class="mode" id="vtab-btn-gen" role="tab" onclick="vtabIr('gen')">
+    <span class="mi">🎯</span>
+    <span><b>Generador por temáticas</b><small>De un directo largo, un vídeo por cada tema</small></span>
+  </button>
+</div>
+
+<!-- ═══════════════════════════ VÍDEOS PRO ═══════════════════════════ -->
+<div id="vtab-pro">
+<form class="card" method="post" action="{{ url_for('videos_generar_pro') }}">
+  <div class="pasos">
+
+    <div class="paso"><div class="paso-n">1</div><div>
+      <h3>Sube tu vídeo grabado</h3>
+      <div id="up-drop-pro" class="up-drop" onclick="document.getElementById('up-file-pro').click()">
+        <input type="file" id="up-file-pro" accept="video/*" style="display:none"
+               onchange="upComienza(this.files[0], 'pro')">
+        <div id="up-vacio-pro">
+          <div style="font-size:38px;line-height:1">⬆️</div>
+          <div style="font:800 17px var(--font)">Arrastra tu tutorial aquí, o haz clic para elegirlo</div>
+          <div class="muted" style="font-size:13px">pantalla + cámara · mp4, mov, mkv, webm · sin límite práctico de tamaño</div>
+        </div>
+        <div id="up-progreso-pro" style="display:none">
+          <div class="muted" style="font-size:13px;margin-bottom:6px" id="up-nombre-pro"></div>
+          <div class="up-bar-track"><div class="up-bar" id="up-bar-pro" style="width:0%"></div></div>
+          <div class="muted" style="font-size:12px;margin-top:4px" id="up-pct-pro">0%</div>
+        </div>
+        <div id="up-listo-pro" style="display:none">
+          <div style="font-size:30px;line-height:1">✅</div>
+          <div style="font:800 16px var(--font)"><span id="up-listo-nombre-pro"></span></div>
+          <div class="muted" style="font-size:13px" id="up-listo-tam-pro"></div>
+          <button type="button" class="btn ghost sm" style="margin-top:6px"
+                  onclick="event.stopPropagation();upQuitar('pro')">quitar y subir otro</button>
+        </div>
+        <div id="up-error-pro" style="display:none;color:var(--bad);font-weight:700"></div>
+      </div>
+      <input type="hidden" name="source" id="src-input-pro" required>
+    </div></div>
+
+    <div class="paso"><div class="paso-n">2</div><div>
+      <h3>¿Para qué canal es?</h3>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <select name="canal" id="canal-pro" required style="max-width:420px" onchange="canalCambio(this)">
+          {% for c in canales %}<option value="{{ c.slug }}" data-propio="{{ 1 if c.propio else 0 }}" {{ 'selected' if loop.first }}>{{ c.nombre }}</option>{% endfor %}
+          <option value="__nuevo__">➕ Nuevo canal…</option>
+        </select>
+        <button type="button" class="btn ghost sm" id="canal-editar" style="display:none" onclick="cwAbrir(document.getElementById('canal-pro').value)">✏️ Editar canal</button>
+      </div>
+      <div class="hint">Aplica solas la marca (colores y letra), el contexto para la IA y la descripción de ese canal. ¿Otro canal? Elige <b>«Nuevo canal»</b> y cuéntale al panel cómo es.</div>
+    </div></div>
+
+    <div class="paso"><div class="paso-n">3</div><div>
+      <h3>Genera y listo</h3>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <button type="submit" id="btn-generar-pro" class="btn lg" disabled onclick="return upValidaPro()">✨ Generar con PRO</button>
+        {% if busy %}<span class="callout warn" style="padding:7px 12px">Hay un vídeo procesándose: este entrará en cola.</span>{% endif %}
+      </div>
+      <div class="hint">Tarda más o menos lo que dura tu vídeo. Puedes cerrar esta pestaña: el panel sigue trabajando y te avisa al terminar.</div>
+      <label class="mini-chk" style="margin-top:10px"><input type="checkbox" id="vision-chk" {{ 'checked' if ia_ve_video }}
+             onchange="visionElige(this.checked)">
+        👁 Que la IA vea el vídeo antes de editarlo (experimento · Gemini Flash-Lite · es la misma opción de ⚙️ Opciones)</label>
+      <details class="opciones" style="margin-top:12px;max-width:560px">
+        <summary>Opciones</summary>
+        <label class="mini-chk"><input type="checkbox" name="solo_analisis">
+          Solo analizar (no renderiza): te enseña el plan del director — recortes, título sugerido, idea de miniatura.</label>
+      </details>
+    </div></div>
+
+  </div>
+</form>
+
+<div class="card flat" style="background:var(--card-2)">
+  <b style="font:800 15px var(--font)">¿Qué hace PRO por ti?</b>
+  <div style="display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;font-size:14px">
+    <span>✂️ Corta relleno y muletillas</span><span>🎥 Alterna tu cara y la pantalla</span>
+    <span>🏷️ Tarjetas animadas en vez de subtítulos</span><span>✨ Ilustraciones que refuerzan lo que explicas</span>
+    <span>🎵 Música de tu librería, bajo tu voz</span><span>📝 Título, miniatura, capítulos y descripción</span>
+  </div>
+  <div class="hint" style="margin-top:10px">Un Director de IA (Gemini) lo decide todo; si algo no te gusta, luego se lo cuentas con «¿Quieres mejorarle algo?» (hasta {{ mejoras_max }} veces, una versión debajo de otra) o lo ajustas tú con el editor de cortes.</div>
+</div>
+</div>
+
+<!-- ═══════════════════════════ GENERADOR POR TEMÁTICAS ═══════════════════════════ -->
+<div id="vtab-gen" style="display:none">
+<p class="sub">Le pasas un <b>directo entero</b> y junta todo lo que hablaste de un mismo tema en un vídeo aparte.
+  <b>La temática manda la duración</b>: cada vídeo dura lo que dio de sí. Salen en la carpeta <code>videos</code>, con el sufijo <code>--videos</code>.</p>
+
+<form class="card" method="post" action="{{ url_for('videos_generar') }}">
+  <div class="pasos">
+
+    <div class="paso"><div class="paso-n">1</div><div>
+      <h3>¿De dónde sale el directo?</h3>
+      <div class="fuente-tabs" role="tablist">
+        <button type="button" id="fuente-btn-url" class="on" onclick="genFuente('url')">🔗 Pegar el enlace del directo</button>
+        <button type="button" id="fuente-btn-archivo" onclick="genFuente('archivo')">📁 Subir un archivo</button>
+      </div>
+
+      <div id="gen-fuente-url">
+        <input type="text" id="src-input-manual-gen" autocomplete="off"
+               placeholder="https://www.youtube.com/watch?v=…   ·   o la ruta de un archivo de este PC"
+               oninput="const h=document.getElementById('src-input-gen'); h.value=this.value; h.dispatchEvent(new Event('input'))">
+        <div class="hint">Vale el enlace de un directo de <b>YouTube o Twitch</b>: el panel lo descarga solo (hasta 1080p).
+          También puedes escribir la ruta de un archivo que ya tengas en este PC, por ejemplo <code>D:\directos\martes.mp4</code>.</div>
+      </div>
+
+      <div id="gen-fuente-archivo" style="display:none">
+        <div id="up-drop-gen" class="up-drop" onclick="document.getElementById('up-file-gen').click()">
+          <input type="file" id="up-file-gen" accept="video/*" style="display:none"
+                 onchange="upComienza(this.files[0], 'gen')">
+          <div id="up-vacio-gen">
+            <div style="font-size:34px;line-height:1">⬆️</div>
+            <div style="font:800 16px var(--font)">Arrastra el directo aquí, o haz clic para elegirlo</div>
+            <div class="muted" style="font-size:13px">mp4 · mov · mkv · webm — sin límite práctico de tamaño</div>
+          </div>
+          <div id="up-progreso-gen" style="display:none">
+            <div class="muted" style="font-size:13px;margin-bottom:6px" id="up-nombre-gen"></div>
+            <div class="up-bar-track"><div class="up-bar" id="up-bar-gen" style="width:0%"></div></div>
+            <div class="muted" style="font-size:12px;margin-top:4px" id="up-pct-gen">0%</div>
+          </div>
+          <div id="up-listo-gen" style="display:none">
+            <div style="font-size:28px;line-height:1">✅</div>
+            <div style="font:800 16px var(--font)"><span id="up-listo-nombre-gen"></span></div>
+            <div class="muted" style="font-size:13px" id="up-listo-tam-gen"></div>
+            <button type="button" class="btn ghost sm" style="margin-top:6px"
+                    onclick="event.stopPropagation();upQuitar('gen')">quitar y subir otro</button>
+          </div>
+          <div id="up-error-gen" style="display:none;color:var(--bad);font-weight:700"></div>
+        </div>
+      </div>
+      <input type="hidden" name="source" id="src-input-gen" required>
+    </div></div>
+
+    <div class="paso"><div class="paso-n">2</div><div>
+      <h3>Cuéntale de qué va <span class="muted" style="font-weight:500;font-size:13px">(recomendado)</span></h3>
+      <input type="text" name="contexto" id="ctx-input" maxlength="140" autocomplete="off"
+             oninput="cargaAprendizaje()"
+             placeholder="p. ej.: Tutorial de SEO, hablando de Search Console y Core Web Vitals">
+      <div class="hint">Ayuda a la IA a entender de qué va todo y separa lo que aprende por temática.</div>
+    </div></div>
+
+    <div class="paso"><div class="paso-n">3</div><div>
+      <h3>¿Cuántos vídeos y de qué duración?</h3>
+      <div class="row">
+        <div><label>Nº máximo de vídeos</label>
+          <input type="number" name="max" value="5" min="1" max="12"></div>
+        <div><label>Duración mínima (min)</label>
+          <input type="number" name="min_min" value="5" min="1" max="60" step="1">
+          <div class="hint">menos que esto no es un vídeo, es un clip</div></div>
+        <div><label>Duración máxima (min)</label>
+          <input type="number" name="max_min" value="20" min="2" max="90" step="1">
+          <div class="hint">tope de cordura, no el objetivo</div></div>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:6px 24px;flex-wrap:wrap">
+        <label class="mini-chk"><input type="checkbox" name="subs"> Quemar subtítulos (en horizontal suelen estorbar)</label>
+        <label class="mini-chk"><input type="checkbox" name="solo_analisis"> Solo detectar temáticas (no renderiza)</label>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <button type="submit" id="btn-generar-gen" class="btn lg" disabled onclick="return upValida('gen')">🎯 Generar vídeos</button>
+        {% if busy %}<span class="callout warn" style="padding:7px 12px">Hay un vídeo procesándose: este entrará en cola.</span>{% endif %}
+      </div>
+    </div></div>
+
+  </div>
+</form>
+
+<div class="card" id="aprend-card" style="display:none">
+  <div class="learn-top">
+    <b style="font:800 16px var(--font)">Qué temáticas mueven la aguja</b>
+    <span class="muted" style="font-size:12.5px" id="aprend-juego"></span>
+  </div>
+  <div id="aprend-body" style="margin-top:10px"></div>
+</div>
+</div>
+
+<!-- ═══════════════════════════ MIS VÍDEOS ═══════════════════════════ -->
+<h2 id="mis-videos">Mis vídeos</h2>
+{% if not jobs %}
+  <div class="vacio">
+    <div class="big">🎬</div>
+    <h3 style="margin:10px 0 4px">No hay vídeos en este PC ahora mismo</h3>
+    <p class="muted" style="margin:0">Sube una grabación arriba y aparecerá aquí, con su estado y su miniatura. Los que
+      publicaste en YouTube siguen más abajo, en el Historial (con sus métricas), aunque los borres del PC.</p>
+  </div>
+{% else %}
+<div class="jobs">
+  {% for j in jobs %}
+  <a class="jobcard" data-jid="{{ j.jid }}" data-state="{{ j.state }}" data-tipo="{{ j.tipo }}" href="{% if j.n_versiones and j.n_versiones > 1 %}{{ url_for('versiones_page', base=j.base) }}{% else %}{{ url_for('job_page', jid=j.jid) }}{% endif %}">
+    <div class="th">{% if j.thumb %}<img loading="lazy" src="{{ j.thumb }}" alt="">{% else %}{{ '✨' if j.tipo == 'pro' else '🎯' }}{% endif %}</div>
+    <div class="cu">
+      <div class="jt" title="{{ j.label or j.source }}">{{ j.nombre or j.label or j.source }}</div>
+      <div class="jm">{{ j.stage }}{% if j.n_clips_result and j.tipo != 'pro' %} · {{ j.n_clips_result }} vídeo(s){% endif %}</div>
+      {# la barra de lo que está en marcha se actualiza sola (tarjetasVivas, abajo); en cola o en pausa espera oculta #}
+      {% if j.state in ('queued', 'running', 'paused') %}<div class="bar vivo" style="margin:2px 0{% if j.state != 'running' %};display:none{% endif %}"><i style="width:{{ j.pct or 0 }}%"></i></div>{% endif %}
+      <div class="jb">
+        {% if j.tipo == 'pro' %}<span class="badge-pro">PRO</span>{% elif j.tipo == 'gen' %}<span class="badge-gen">TEMÁTICAS</span>{% endif %}
+        {% if j.n_versiones and j.n_versiones > 1 %}<span class="nver" title="Este vídeo tiene {{ j.n_versiones }} versiones: al abrirlo las ves una debajo de otra">{{ j.n_versiones }} VERSIONES</span>{% endif %}
+        <span class="badge {{ j.state }}" data-estado>{{ estado_es.get(j.state, j.state) }}</span>
+        {% if j.analisis %}
+          {% if j.analisis.ok %}<span class="badge done" title="Analizado por Gemini">✅ {{ j.analisis.nombre or 'Gemini' }}</span>
+          {% else %}<span class="badge error" title="Dale Reshuffle para volver a analizarlo">❌ Sin analizar por Gemini</span>{% endif %}
+          {# «La IA ve el vídeo» (experimento): para comparar de un vistazo las versiones con y sin la pasada #}
+          {% if j.analisis.ok and j.analisis.vision %}
+            {% if j.analisis.vision.ok %}<span class="badge vista" title="Gemini {{ j.analisis.vision.nombre or 'Flash-Lite' }} miró la grabación y el director editó sabiendo lo que se ve">👁 Visto por IA</span>
+            {% elif j.analisis.vision.apagada %}<span class="badge sin-vista" title="Editado solo con la transcripción (la opción «La IA ve el vídeo» estaba apagada)">🙈 Sin vista IA</span>
+            {% else %}<span class="badge error" title="{{ j.analisis.vision.motivo }}">👁✗ Vista IA falló</span>{% endif %}
+          {% endif %}
+        {% endif %}
+      </div>
+      {% if j.borrable %}
+      <div class="hist-acciones">
+        <span class="muted" style="font-size:12.5px">Nunca llegó a salir. Ábrelo para «Reintentar», o bórralo:</span>
+        <button type="button" class="hist-borrar" title="Mandar a la Papelera de reciclaje (recuperable)"
+                onclick="event.preventDefault(); event.stopPropagation(); familiaBorra('{{ j.base }}', this)">🗑</button>
+      </div>
+      {% elif j.tipo == 'pro' and j.base and j.state in ('done', 'error', 'cancelled') %}
+      {# el autor (2026-09-26): «siempre debería salir el simbolito de la basurita… y que se borre también en mi PC» #}
+      <div class="hist-acciones">
+        <button type="button" class="hist-borrar" title="Mandar este vídeo a la Papelera de reciclaje (recuperable). Si está publicado, sigue en el Historial con sus métricas."
+                onclick="event.preventDefault(); event.stopPropagation(); familiaBorra('{{ j.base }}', this)">🗑</button>
+      </div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══════════════ HISTORIAL (los vídeos SUBIDOS a YouTube, publicados o programados, sigan o no en este PC) ═══════════════ -->
+<div id="historial-seccion" style="display:none">
+  <div class="hist-cab">
+    <h2 style="margin:28px 0 0">Historial</h2>
+    {# el autor (2026-09-28): las métricas NO se piden solas; este botón las trae de YouTube para todos, cuando él quiera #}
+    <button type="button" class="btn sm" id="hist-refresh" onclick="historialRefresca()"
+            title="Pregunta a YouTube las métricas de TODOS los vídeos del historial, estén en la página que estén (unos segundos por vídeo)">↻ Actualizar métricas</button>
+    <span class="hint" id="hist-refresh-estado" style="margin:0"></span>
+  </div>
+  <p class="hint" style="margin:6px 0 14px">Tus vídeos en YouTube, publicados o programados, con su estado, fecha y título tal como los tiene YouTube, y sus métricas: se quedan aquí aunque los borres del PC para liberar espacio.</p>
+  <div id="hist-resumen"></div>
+  <div class="hist-orden" id="hist-orden"></div>
+  <div class="jobs" id="historial-jobs"></div>
+  <div class="hist-paginas" id="hist-paginas"></div>
+  <section class="card" id="hist-metricas-panel" style="display:none;margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+      <b id="hist-metricas-titulo" style="font-size:17px"></b>
+      <button type="button" class="btn ghost sm" onclick="document.getElementById('hist-metricas-panel').style.display='none'">✕ Cerrar</button>
+    </div>
+    <div id="hist-metricas-cuerpo"></div>
+  </section>
+</div>
+
+<dialog id="borra-dlg" class="dlg-regla">
+  <h3 style="margin:0 0 10px" id="borra-titulo">¿Borrar este vídeo de tu PC?</h3>
+  <div id="borra-cuerpo" style="font-size:14px;line-height:1.5"></div>
+  <label class="mini-chk" style="margin-top:12px"><input type="checkbox" id="borra-todo" checked><span><b>Borrar del todo</b>: sin pasar por la Papelera de Windows (así el espacio se libera ya)</span></label>
+  <p class="hint" id="borra-nota" style="margin-top:10px"></p>
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">
+    <button type="button" class="btn ghost" id="borra-no">Cancelar</button>
+    <button type="button" class="btn" id="borra-si">🗑 Sí, borrar</button>
+  </div>
+</dialog>
+
+<script src="{{ url_for('static', filename='metricas.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='muletillas.js') }}?v={{ ui_v }}"></script>
+<script>
+async function motorElige(v){
+  document.querySelectorAll('#motor-tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  const msg = document.getElementById('motor-msg');
+  msg.style.color = ''; msg.textContent = 'Guardando…';
+  try{
+    const j = await (await fetch('/api/opciones/motor', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({motor: v})})).json();
+    if(!j.ok){ msg.style.color = 'var(--bad)'; msg.textContent = '✖ ' + (j.error || 'No se pudo guardar.'); return; }
+    msg.style.color = 'var(--ok)';
+    msg.textContent = '✔ Guardado. Ahora renderiza por ' + (j.motor_activo === 'gpu' ? 'GPU.' : 'CPU.');
+    document.getElementById('motor-resumen').innerHTML = j.motor_activo === 'gpu' ? '⚡ GPU' : '🖥️ CPU';
+  }catch(e){ msg.style.color = 'var(--bad)'; msg.textContent = '✖ No se pudo hablar con el panel: ' + e.message; }
+}
+function visionPinta(v){
+  document.querySelectorAll('#vision-tabs button').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === v));
+  const chk = document.getElementById('vision-chk');
+  if(chk) chk.checked = v;
+  document.getElementById('vision-resumen').textContent = v ? '👁 Sí' : 'No';
+}
+async function visionElige(v){
+  // «La IA ve el vídeo»: los botones de ⚙️ Opciones y la casilla del paso 3 son la MISMA opción (config.yaml)
+  visionPinta(v);
+  const msg = document.getElementById('vision-msg');
+  msg.style.color = ''; msg.textContent = 'Guardando…';
+  let error = '';
+  try{
+    const j = await (await fetch('/api/opciones/vision', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({activo: v})})).json();
+    if(j.ok){
+      visionPinta(j.activo);
+      msg.style.color = 'var(--ok)';
+      msg.textContent = j.activo ? '✔ Guardado. Desde el próximo análisis, la IA verá el vídeo.'
+                                 : '✔ Guardado. La IA editará solo con la transcripción, como siempre.';
+      return;
+    }
+    error = j.error || 'No se pudo guardar.';
+  }catch(e){ error = 'No se pudo hablar con el panel: ' + e.message; }
+  visionPinta(!v);                                    // no se guardó: vuelve a lo que había
+  msg.style.color = 'var(--bad)'; msg.textContent = '✖ ' + error;
+  alert('No se pudo cambiar «La IA ve el vídeo»: ' + error);
+}
+// clic en los cuadritos: la curva de retención con LO GUARDADO (sin preguntar a YouTube; eso lo hace «↻ Actualizar métricas»)
+function historialMetricas(base, titulo){
+  document.getElementById('hist-metricas-titulo').textContent = titulo;
+  const panel = document.getElementById('hist-metricas-panel');
+  panel.style.display = '';
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  metricasCargaEn(base, 'hist-metricas-cuerpo', false, true);
+}
+// el autor (2026-09-28): en vez del botón «📊 Métricas», los 4 números a la vista en cada vídeo — lo último que se leyó de
+// YouTube (la página nunca le pregunta sola: eso lo hace «↻ Actualizar métricas», cuando él quiera)
+function histTiempo(min){
+  if(min == null) return '–';
+  return min < 60 ? Math.round(min) + ' min' : (min / 60).toLocaleString('es', {maximumFractionDigits: 1}) + ' h';
+}
+// el autor (2026-09-28): al lado de cada número, cuánto cambió desde el ↻ anterior: sube en verde, baja en rojo (panel.css);
+// la retención en puntos (entre más alta, mejor)
+function histDelta(ahora, antes, tipo){
+  if(ahora == null || antes == null) return '';
+  return histDeltaVal(Number(ahora) - Number(antes), tipo);
+}
+function histDeltaVal(d, tipo){
+  if(d == null) return '';
+  d = tipo === 'pct' ? Math.round(d * 10) / 10 : Math.round(d);
+  if(!d) return '<i class="hist-delta cero">+0</i>';
+  const n = Math.abs(d);
+  const txt = tipo === 'pct' ? n.toLocaleString('es', {maximumFractionDigits: 1}) + '%' : (tipo === 'min' ? histTiempo(n) : _mNum(n));
+  return `<i class="hist-delta ${d > 0 ? 'sube' : 'baja'}">${d > 0 ? '+' : '−'}${txt}</i>`;
+}
+// «11 oct a las 14:27» (el autor, 2026-10-11: «métricas leídas el 11 a las 14:27 (comparación anterior: …)»)
+function histCuando(ts){
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString('es', {day: 'numeric', month: 'short'}) + ' a las ' + d.toLocaleTimeString('es', {hour: '2-digit', minute: '2-digit'});
+}
+function histLeidas(leido, anterior, palabra){
+  if(!leido) return '';
+  return `${palabra} el ${histCuando(leido)}` + (anterior ? ` (comparación anterior: ${histCuando(anterior)})` : ' (primera lectura: aún sin comparación)');
+}
+// los 6 cuadros grandes = la suma de TODOS los vídeos (de todas las páginas) y cuánto cambió desde el ↻ anterior
+let _histTot = null;
+function histResumenHTML(){
+  const t = _histTot;
+  if(!t || !t.con_datos) return `<div class="hist-met vacio" style="margin:8px 0 14px">Sin métricas todavía: pulsa «↻ Actualizar métricas» para ver la suma de todos tus vídeos.</div>`;
+  const ch = t.cambio || {};
+  const k = (etq, valor, delta, nota) => `<div class="hist-kpi"><small>${etq}</small><b>${valor}${delta}</b>${nota ? `<em>${nota}</em>` : ''}</div>`;
+  const n0 = v => _mNum(v == null ? null : Math.round(v));
+  const cuadros = `<div class="hist-kpis">
+    ${k('Vistas', n0(t.vistas), histDeltaVal(ch.vistas))}
+    ${k('Me gusta', n0(t.likes), histDeltaVal(ch.likes))}
+    ${k('Comentarios', n0(t.comentarios), histDeltaVal(ch.comentarios))}
+    ${k('Retención', t.ret_pct != null ? (Math.round(t.ret_pct * 10) / 10).toLocaleString('es') + '%' : '–', histDeltaVal(ch.ret_pct, 'pct'), 'media según las vistas de cada vídeo')}
+    ${k('Suscriptores', n0(t.suscriptores), histDeltaVal(ch.suscriptores))}
+    ${k('Tiempo visto', histTiempo(t.minutos), histDeltaVal(ch.minutos, 'min'))}
+  </div>`;
+  const sinDatos = t.videos - t.con_datos;
+  return cuadros + `<p class="hist-leidas">Suma de ${t.con_datos} ${t.con_datos === 1 ? 'vídeo' : 'vídeos'}`
+    + (sinDatos > 0 ? ` (${sinDatos} sin lectura todavía)` : '') + ` · ${histLeidas(t.leido_en, t.comparado_con, 'Métricas leídas') || ''}</p>`;
+}
+// ordenar por una métrica, de mayor a menor (el autor, 2026-10-11: «filtrar por los que tuvieron más me gusta… para ver qué formato funcionó mejor»)
+const HIST_ORDENES = [
+  {id: 'recientes', txt: '📅 Más recientes'}, {id: 'vistas', txt: '👁 Más vistas'}, {id: 'likes', txt: '👍 Más me gusta'},
+  {id: 'comentarios', txt: '💬 Más comentarios'}, {id: 'ret_pct', txt: '📈 Mayor retención'},
+  {id: 'suscriptores', txt: '➕ Más suscriptores'}, {id: 'minutos', txt: '⏱ Más tiempo visto'}];
+const HIST_POR_PAG = 27;
+let _histFilas = [], _histOrden = 'recientes', _histPag = 1;
+try{ const g = localStorage.getItem('hist_orden'); if(HIST_ORDENES.some(o => o.id === g)) _histOrden = g; }catch(e){}
+function histOrdena(filas){
+  if(_histOrden === 'recientes') return filas.slice();
+  const val = f => { const v = f.metricas && f.metricas[_histOrden]; return v == null ? -Infinity : Number(v); };
+  return filas.slice().sort((a, b) => val(b) - val(a));          // estable: los empates siguen en orden de fecha
+}
+function histOrdenar(id){
+  _histOrden = id; _histPag = 1;
+  try{ localStorage.setItem('hist_orden', id); }catch(e){}
+  histPinta();
+}
+function histPagina(n){
+  _histPag = n; histPinta();
+  document.getElementById('historial-seccion').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+function histPaginasHTML(total){
+  const paginas = Math.ceil(total / HIST_POR_PAG);
+  if(paginas <= 1) return '';
+  const ver = new Set([1, paginas]);
+  for(let p = _histPag - 2; p <= _histPag + 2; p++) if(p >= 1 && p <= paginas) ver.add(p);
+  const lista = [...ver].sort((a, b) => a - b);
+  const btn = (p, txt, off) => `<button type="button" class="btn ghost sm${p === _histPag && !txt ? ' on' : ''}"${off ? ' disabled' : ` onclick="histPagina(${p})"`}>${txt || p}</button>`;
+  let h = btn(_histPag - 1, '‹ Anterior', _histPag <= 1);
+  lista.forEach((p, i) => { if(i && p - lista[i - 1] > 1) h += '<span class="pun">…</span>'; h += btn(p); });
+  h += btn(_histPag + 1, 'Siguiente ›', _histPag >= paginas);
+  const ini = (_histPag - 1) * HIST_POR_PAG + 1, fin = Math.min(total, _histPag * HIST_POR_PAG);
+  return h + `<span class="cuenta">Vídeos ${ini}–${fin} de ${total} · página ${_histPag} de ${paginas}</span>`;
+}
+function histPinta(){
+  const filas = _histFilas;
+  document.getElementById('historial-seccion').style.display = filas.length ? '' : 'none';
+  document.getElementById('hist-resumen').innerHTML = histResumenHTML();
+  document.getElementById('hist-orden').innerHTML = '<span class="etq">Ordenar por</span>'
+    + HIST_ORDENES.map(o => `<button type="button" class="btn ghost sm${o.id === _histOrden ? ' on' : ''}" onclick="histOrdenar('${o.id}')">${o.txt}</button>`).join('');
+  const orden = histOrdena(filas);
+  const paginas = Math.max(1, Math.ceil(orden.length / HIST_POR_PAG));
+  if(_histPag > paginas) _histPag = paginas;                     // p. ej. borraste vídeos y la última página ya no existe
+  document.getElementById('historial-jobs').innerHTML = orden.slice((_histPag - 1) * HIST_POR_PAG, _histPag * HIST_POR_PAG).map(histTarjeta).join('');
+  document.getElementById('hist-paginas').innerHTML = histPaginasHTML(orden.length);
+}
+function histMetricasHTML(f, tituloJs){
+  const m = f.metricas;
+  if(!m) return `<div class="hist-met vacio">Sin métricas todavía: pulsa «↻ Actualizar métricas» arriba.</div>`;
+  const a = m.anterior || {};
+  const fecha = ts => new Date(ts * 1000).toLocaleString('es', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+  const ret = m.ret_pct != null ? Math.round(m.ret_pct) + '%' : '–';
+  const tit = (m.leido_en ? 'Leídas de YouTube el ' + fecha(m.leido_en) : '')
+    + (a.leido_en ? ' · el cambio es desde el ' + fecha(a.leido_en) : '') + ' · clic: la curva de retención';
+  const c = (etiqueta, valor, delta, id) => `<span${id === _histOrden ? ' class="orden"' : ''}><small>${etiqueta}</small><b>${valor}${delta}</b></span>`;
+  return `<button type="button" class="hist-met" onclick="historialMetricas('${esc(f.base)}', ${tituloJs})" title="${esc(tit)}">
+    ${c('Vistas', _mNum(m.vistas), histDelta(m.vistas, a.vistas), 'vistas')}
+    ${c('Me gusta', _mNum(m.likes), histDelta(m.likes, a.likes), 'likes')}
+    ${c('Comentarios', _mNum(m.comentarios), histDelta(m.comentarios, a.comentarios), 'comentarios')}
+    ${c('Retención', ret, histDelta(m.ret_pct, a.ret_pct, 'pct'), 'ret_pct')}
+    ${c('Suscriptores', _mNum(m.suscriptores), histDelta(m.suscriptores, a.suscriptores), 'suscriptores')}
+    ${c('Tiempo visto', histTiempo(m.minutos), histDelta(m.minutos, a.minutos, 'min'), 'minutos')}
+    <em class="hist-leida">${histLeidas(m.leido_en, a.leido_en, 'Leídas')}</em>
+  </button>`;
+}
+let _histRefrescando = false;
+async function historialRefresca(){
+  document.getElementById('hist-refresh').disabled = true;
+  try{ await fetch('/api/historial/metricas/refrescar', {method: 'POST'}); }
+  catch(e){ document.getElementById('hist-refresh').disabled = false;
+            document.getElementById('hist-refresh-estado').textContent = 'El panel no respondió.'; return; }
+  historialRefrescoSigue();
+}
+async function historialRefrescoSigue(){
+  const btn = document.getElementById('hist-refresh'), est = document.getElementById('hist-refresh-estado');
+  _histRefrescando = true;
+  let e;
+  try{ e = await (await fetch('/api/historial/metricas/estado')).json(); }
+  catch(x){ setTimeout(historialRefrescoSigue, 3000); return; }
+  if(e.en_marcha){
+    btn.disabled = true;
+    est.textContent = `Preguntando a YouTube… ${e.hechos} de ${e.total}`;
+    setTimeout(historialRefrescoSigue, 1500);
+    return;
+  }
+  _histRefrescando = false;
+  btn.disabled = false;
+  est.textContent = e.fallidos ? `${e.fallidos} sin respuesta de YouTube` : '';
+  cargaHistorial();
+}
+function historialMuletillas(base, titulo){
+  document.getElementById('hist-metricas-titulo').textContent = '🗣️ Muletillas · ' + titulo;
+  const panel = document.getElementById('hist-metricas-panel');
+  panel.style.display = '';
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  muletillasCargaEn(base, 'hist-metricas-cuerpo');
+}
+// El estado de cada vídeo es el que dice YouTube (el autor, 2026-09-26: «sale como publicado pero está programado… que salga
+// scheduled… y al darle clic, el día y la hora en que va a salir», «las fechas… 100 % de YouTube»). Lo lee el panel
+// (clipper/historial.py → actualiza_desde_youtube); si aún no pudo preguntarle, «subido», con la fecha de la subida.
+const HIST_ESTADOS = {
+  publicado:  {txt: '✅ PUBLICADO',  cls: 'publicado',  fecha: 'Publicado el ',       tip: 'Público en YouTube'},
+  programado: {txt: '📅 PROGRAMADO', cls: 'programado', fecha: 'Programado para el ', tip: 'Clic: el día y la hora en que sale'},
+  privado:    {txt: '🔒 PRIVADO',    cls: 'gris',       fecha: 'Subido el ',          tip: 'Privado en YouTube: solo lo ves tú'},
+  oculto:     {txt: '🔗 OCULTO',     cls: 'gris',       fecha: 'Subido el ',          tip: 'Oculto: solo lo ve quien tenga el enlace'},
+  no_esta:    {txt: '❌ NO ESTÁ EN YOUTUBE', cls: 'no-esta', fecha: 'Subido el ',
+               tip: 'YouTube ya no lo devuelve: lo borraste de YouTube, o el YouTube conectado es de otra cuenta'},
+};
+const HIST_SIN_DATOS = {txt: '⬆ SUBIDO A YOUTUBE', cls: 'gris', fecha: 'Subido el ',
+  tip: 'Aún no se pudo preguntar a YouTube si ya es público (¿YouTube conectado?). La fecha es la de la subida desde el panel.'};
+const _histAbiertos = new Set();          // los «📅 PROGRAMADO» que tienes abiertos siguen abiertos al repintar
+function histFalta(ms){
+  const min = Math.round(ms / 60000);
+  if(min < 1) return 'sale en un momento';
+  if(min < 60) return `faltan ${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  if(h < 24) return `faltan ${h} h` + (m ? ` ${m} min` : '');
+  const dias = Math.round(h / 24);
+  return `faltan ${dias} día${dias === 1 ? '' : 's'}`;
+}
+function histProgramado(btn, base){
+  const box = btn.closest('.cu').querySelector('.hist-prog-info');
+  if(!box) return;
+  box.hidden = !box.hidden;
+  btn.setAttribute('aria-expanded', String(!box.hidden));
+  if(box.hidden) _histAbiertos.delete(base); else _histAbiertos.add(base);
+}
+function histTarjeta(f){
+      const e = HIST_ESTADOS[f.estado_yt] || HIST_SIN_DATOS;
+      const d = f.fecha_yt ? new Date(f.fecha_yt * 1000) : null;
+      const fecha = d ? d.toLocaleDateString('es', {day: 'numeric', month: 'short', year: 'numeric'}) : '';
+      const titulo = f.titulo_yt || f.titulo || f.base;
+      const tituloJs = JSON.stringify(titulo).replace(/"/g, '&quot;');
+      const yt = f.youtube && f.youtube.video_id;
+      let estado;
+      if(f.estado_yt === 'programado' && d){
+        const abierto = _histAbiertos.has(f.base);
+        const cuando = d.toLocaleDateString('es', {weekday: 'long', day: 'numeric', month: 'long'})
+          + ' a las ' + d.toLocaleTimeString('es', {hour: '2-digit', minute: '2-digit'});
+        estado = `<div class="jb"><button type="button" class="hist-estado programado" aria-expanded="${abierto}"
+                    title="${e.tip}" onclick="histProgramado(this, '${esc(f.base)}')">${e.txt} ▾</button></div>
+                  <div class="hist-prog-info"${abierto ? '' : ' hidden'}>Sale el ${esc(cuando)} · ${histFalta(d - Date.now())}</div>`;
+      } else {
+        const tip = f.estado_supuesto ? 'Le llegó su hora programada: YouTube lo publica solo. Se confirma en la próxima lectura.' : e.tip;
+        estado = `<div class="jb"><span class="hist-estado ${e.cls}" title="${esc(tip)}">${e.txt}</span></div>`;
+      }
+      return `<div class="jobcard archivado">
+        <div class="th">${f.miniatura_url ? `<img loading="lazy" src="${esc(f.miniatura_url)}" alt=""
+             title="${f.miniatura_de_youtube ? (f.miniatura_provisional ? 'La miniatura que tenía en YouTube 15 min después de subirlo (se vuelve a mirar 15 min después de que se publique)' : 'La miniatura que tiene en YouTube') : 'La miniatura automática del render (la de YouTube se mira 15 min después de subirlo)'}">` : '🎬'}</div>
+        <div class="cu">
+          <div class="jt">${esc(titulo)}</div>
+          <div class="jm">${fecha ? e.fecha + fecha : ''}${f.version > 1 ? ` · v${f.version}` : ''} · ${f.local
+            ? `sigue en tu PC (<a href="/video/${encodeURIComponent(f.base)}">abrir</a>)` : 'ya no está en este PC'}</div>
+          ${estado}
+          <div class="hist-acciones">
+            ${yt ? `<a class="btn ghost sm" href="${esc(f.youtube.url || ('https://youtu.be/' + f.youtube.video_id))}" target="_blank" rel="noopener">▶ YouTube</a>` : ''}
+            <button type="button" class="btn ghost sm" title="Las muletillas que más repites en ese vídeo (su transcripción sigue guardada)"
+                    onclick="historialMuletillas('${esc(f.base)}', ${tituloJs})">🗣️ Muletillas</button>
+            <button type="button" class="hist-borrar" title="Quitar del historial (no toca YouTube)" onclick="historialBorra('${esc(f.base)}', this)">🗑</button>
+          </div>
+          ${yt ? histMetricasHTML(f, tituloJs) : ''}
+        </div>
+      </div>`;
+}
+async function cargaHistorial(vuelta = 0){
+  try{
+    const j = await (await fetch('/api/historial')).json();
+    // el panel está preguntando a YouTube ahora mismo (estado, fechas, miniaturas): se vuelve a pintar en un momento
+    if(j.actualizando_youtube && vuelta < 5) setTimeout(() => cargaHistorial(vuelta + 1), 4000);
+    _histFilas = j.filas || []; _histTot = j.totales || null;
+    const filas = _histFilas;
+    histPinta();
+    // ↻ de las métricas: si hay una vuelta en marcha (p. ej. recargaste la página a mitad), se sigue; si no, cuándo se leyeron
+    const mr = j.metricas_refresco || {};
+    if(mr.en_marcha && !_histRefrescando) historialRefrescoSigue();
+
+  }catch(e){ /* el historial es un extra: si falla, la galería normal sigue funcionando igual */ }
+}
+// con la página abierta, el Historial se repinta cada 5 min (un programado que sale cambia solo a PUBLICADO); a YouTube
+// solo se le pregunta cuando toca (como mucho cada 15 min, o al llegar la hora de un programado)
+setInterval(() => cargaHistorial(), 5 * 60 * 1000);
+async function historialBorra(base, btn){
+  if(!confirm('¿Quitar este vídeo del historial? No borra nada de YouTube, solo deja de aparecer aquí.')) return;
+  btn.disabled = true;
+  try{
+    const j = await (await fetch('/api/historial/' + encodeURIComponent(base) + '/borrar', {method: 'POST'})).json();
+    if(j.ok) cargaHistorial(); else btn.disabled = false;
+  }catch(e){ btn.disabled = false; }
+}
+// ---- 💾 Espacio y el 🗑 de «Mis vídeos» (el autor, 2026-09-26 y 2026-10-04: «si está programado pasa al Historial y si no, simplemente se borra… todo debería borrarse
+// excepto las que están en mi disco D, Videos: esas déjalas ahí, las dejo como respaldo por si acaso»)
+function tamTxt(n){
+  n = Number(n) || 0;
+  if(n >= 1000 * 1048576) return (n / 1073741824).toLocaleString('es-CO', {maximumFractionDigits: 1}) + ' GB';     // (1.004 MB se lee mejor como 1 GB)
+  if(n >= 1048576) return Math.round(n / 1048576).toLocaleString('es-CO') + ' MB';
+  if(n >= 1024) return Math.round(n / 1024).toLocaleString('es-CO') + ' KB';
+  return '0 MB';
+}
+function fechaTxt(ts){
+  try{ return new Date(Number(ts) * 1000).toLocaleString('es-CO', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'}); }
+  catch(e){ return ''; }
+}
+const plural = (n, a, b) => n === 1 ? a : b;
+// El aviso de borrar (el mismo para un vídeo y para «Borrar los publicados»): lo que se va y la casilla «borrar del todo» (sin marcar = a la Papelera de Windows;
+// se recuerda la última elección en este navegador).
+function borraDialogo(o){
+  return new Promise(resolve => {
+    const dlg = document.getElementById('borra-dlg');
+    document.getElementById('borra-titulo').textContent = o.titulo;
+    document.getElementById('borra-cuerpo').innerHTML = o.html;
+    document.getElementById('borra-nota').innerHTML = o.nota || '';
+    const chk = document.getElementById('borra-todo');
+    try{ chk.checked = localStorage.getItem('borra_papelera') !== '1'; }catch(e){ chk.checked = true; }
+    const bSi = document.getElementById('borra-si'), bNo = document.getElementById('borra-no');
+    bSi.textContent = o.si || '🗑 Sí, borrar';
+    const fin = ok => {
+      bSi.onclick = bNo.onclick = null; dlg.onclose = null;
+      const papelera = !chk.checked;
+      if(ok){ try{ localStorage.setItem('borra_papelera', papelera ? '1' : '0'); }catch(e){} }
+      if(dlg.open) dlg.close();
+      resolve({ok: ok, papelera: papelera});
+    };
+    bSi.onclick = () => fin(true);
+    bNo.onclick = () => fin(false);
+    dlg.onclose = () => fin(false);                     // Esc
+    dlg.showModal();
+  });
+}
+// El 🗑 de «Mis vídeos»: borra del todo TODO lo de ese vídeo en tu PC (o lo manda a la Papelera de Windows, si desmarcas la casilla). Tus grabaciones de OBS (D:/Videos)
+// NO se tocan. Si está subido a YouTube se queda en el Historial (solo el esqueleto); si no, desaparece.
+async function familiaBorra(base, btn){
+  btn.disabled = true;
+  let info;
+  try{ info = await (await fetch('/api/familia/' + encodeURIComponent(base) + '/borrado')).json(); }
+  catch(e){ alert('No se pudo hablar con el panel: ' + e.message); btn.disabled = false; return; }
+  if(!info.ok){ alert(info.error || 'Ahora no se puede borrar.'); btn.disabled = false; return; }
+  const obs = info.obs || {}, extras = info.extras || {};
+  const hayObs = (obs.archivos || []).length > 0;
+  const lista = [(info.versiones > 1 ? `El vídeo editado (sus ${info.versiones} versiones)` : 'El vídeo editado') + ' y sus Shorts',
+                 'Su caché de trabajo' + (info.cache_bytes ? ` (${tamTxt(info.cache_bytes)}: el render la vuelve a hacer sola si algún día lo editas otra vez)` : '')];
+  if(info.grabacion) lista.push('La copia de la grabación que guardó el programa (la carpeta inbox)');
+  const sinUsar = [];
+  if(extras.shorts) sinUsar.push(extras.shorts + ' ' + plural(extras.shorts, 'Short', 'Shorts'));
+  if(extras.articulo) sinUsar.push('el artículo para tu web');
+  if(extras.redes) sinUsar.push('las publicaciones para tus redes');
+  if(extras.carrusel) sinUsar.push('el carrusel para Instagram y TikTok');
+  let html = `<p style="margin:0 0 8px">Se va de tu PC <b>todo lo de este vídeo</b> (${tamTxt(info.bytes)}):</p>`
+    + `<ul style="margin:0 0 10px;padding-left:20px">${lista.map(x => '<li>' + esc(x) + '</li>').join('')}</ul>`;
+  if(sinUsar.length) html += `<p style="margin:0 0 8px">📌 Trae ${esc(sinUsar.join(', '))}: si aún no los usaste, cópialos o descárgalos antes (se van con el vídeo).</p>`;
+  html += `<p style="margin:0 0 8px">${info.publicado ? '✅ Está subido a YouTube: sigue en tu canal y se queda en el <b>Historial</b> (título, miniatura de YouTube, métricas y muletillas: casi nada de espacio).'
+                                                      : '⚠️ No está subido a YouTube: desaparece de la lista y del Historial.'}</p>`;
+  if(hayObs) html += `<p style="margin:0">🛟 <b>Tus grabaciones originales de OBS (${tamTxt(obs.bytes)}) NO se tocan</b>: siguen en ${esc(obs.carpeta || 'tu carpeta de OBS')}.</p>`;
+  else if(info.grabacion) html += `<p style="margin:0">⚠️ No encuentro la grabación original en ${esc(obs.carpeta || 'tu carpeta de OBS')} (¿ya la borraste?): la copia del programa se borra con el resto, así que sería la última.</p>`;
+  const nota = (obs.compartida ? 'La grabación de OBS de este vídeo la usa otro vídeo tuyo. ' : '')
+    + 'Sin marcar la casilla, va a la Papelera de reciclaje de Windows: lo recuperas de ahí, pero el espacio no se libera hasta que la vacíes. No toca YouTube.';
+  const r = await borraDialogo({titulo: '¿Borrar este vídeo de tu PC?', html: html, nota: nota, si: '🗑 Sí, borrar'});
+  if(!r.ok){ btn.disabled = false; return; }
+  try{
+    const j = await (await fetch('/api/familia/' + encodeURIComponent(base) + '/borrar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({papelera: r.papelera})})).json();
+    if(j.ok){ const card = btn.closest('.jobcard'); if(card) card.remove(); cargaHistorial(); espacioCarga(true); }
+    else { alert(j.error || 'No se pudo borrar.'); btn.disabled = false; }
+  }catch(e){ alert('No se pudo hablar con el panel: ' + e.message); btn.disabled = false; }
+}
+
+// «💾 Espacio»: se mide solo al abrir la página (el panel lo guarda 2 min) y se vuelve a medir tras borrar o cambiar algo.
+let espacioDatos = null;
+async function espacioCarga(forzar){
+  try{
+    const d = await (await fetch('/api/espacio' + (forzar ? '?forzar=1' : ''))).json();
+    if(!d.ok) throw new Error(d.error || 'el panel no respondió');
+    espacioDatos = d;
+    espacioPinta(d);
+  }catch(e){
+    document.getElementById('esp-resumen').textContent = 'no pude medirlo';
+    document.getElementById('esp-cuerpo').innerHTML = '<span class="hint" style="color:var(--bad)">✖ ' + esc(e.message) + '</span>';
+  }
+}
+function espacioPinta(d){
+  const L = d.liberable, R = d.ritmo, D = d.disco;
+  const partes = [tamTxt(D.libre) + ' libres'];
+  if(L.n_completos) partes.push(`${L.n_completos} ${plural(L.n_completos, 'vídeo listo', 'vídeos listos')} para borrar (${tamTxt(L.completos)})`);
+  else if(L.caches) partes.push(tamTxt(L.caches) + ' de cachés que sobran');
+  document.getElementById('esp-resumen').textContent = partes.join(' · ');
+  const pct = Math.round(100 * D.usado / Math.max(1, D.total)), colorBarra = (100 - pct) >= 20 ? 'var(--ok)' : (100 - pct) >= 10 ? 'var(--gold)' : 'var(--bad)';
+  const alDia = R.por_dia === 1 ? 'un vídeo al día' : R.por_dia + ' vídeos al día';
+  let h = `<p style="margin:0 0 2px"><b>Tu disco</b>: ${tamTxt(D.libre)} libres de ${tamTxt(D.total)}</p><div class="bar" style="margin:4px 0 10px"><i style="width:${pct}%;background:${colorBarra}"></i></div>`;
+  h += `<p style="margin:0 0 6px"><b>¿Cuánto pesa un vídeo?</b> Unos <b>${tamTxt(R.por_video)}</b>${R.estimado ? ' (estimado: todavía no hay vídeos que medir)' : ''}: `
+     + `<b>${tamTxt(R.pc_video)}</b> en el programa (se van con el 🗑)` + (R.obs_video ? ` y <b>${tamTxt(R.obs_video)}</b> de tus grabaciones de OBS (el programa <b>no las toca</b>)` : '') + '. '
+     + `Sin borrar nada, a ${alDia} son <b>${tamTxt(R.dias_30)}</b> al mes y <b>${tamTxt(R.dias_90)}</b> cada 3 meses: tu disco aguantaría unos <b>${R.dias_para_llenar.toLocaleString('es-CO')} días</b>.</p>`;
+  h += `<p style="margin:0 0 6px">Borrando cada vídeo a los ${d.dias} días de publicarse, <b>lo del programa se queda fijo en unos ${tamTxt(R.estable_con_limpieza)}</b>`
+     + (R.obs_video ? `; lo único que seguiría creciendo es la carpeta de OBS (${tamTxt(R.obs_30)} al mes, ${tamTxt(R.obs_365)} al año${R.dias_para_llenar_obs ? ': llenaría el disco en unos ' + R.dias_para_llenar_obs.toLocaleString('es-CO') + ' días' : ''}), que decides tú.` : '.')
+     + '</p>';
+  h += `<p class="hint" style="margin:0 0 10px">Ahora ocupan: vídeos editados ${tamTxt(d.carpetas.videos)} · grabaciones copiadas ${tamTxt(d.carpetas.inbox)} · trabajo y cachés ${tamTxt(d.carpetas.work)}`
+     + (d.obs ? ` · carpeta de OBS ${tamTxt(d.obs.bytes)} (${d.obs.grandes} ${plural(d.obs.grandes, 'grabación', 'grabaciones')}, no se toca)` : '')
+     + `. <b>El Historial</b> (${d.historial.filas} ${plural(d.historial.filas, 'vídeo', 'vídeos')}): ${tamTxt(d.historial.bytes)}${d.historial.por_fila ? ` — unos ${tamTxt(d.historial.por_fila)} por vídeo: solo el esqueleto (título, miniatura de YouTube, métricas y muletillas)` : ''}.</p>`;
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+  h += L.caches ? `<button type="button" class="btn sm" onclick="espacioLibera('caches', this)" title="Los dibujos animados y la música de fondo que ya se usaron: el render los vuelve a hacer solo">🧹 Liberar cachés (${tamTxt(L.caches)})</button>`
+                : '<span class="hint" style="margin:0">🧹 No hay cachés que sobren.</span>';
+  h += L.n_completos ? `<button type="button" class="btn sm" onclick="espacioLibera('completos', this)">🗑 Borrar ${L.n_completos === 1 ? 'el vídeo publicado' : 'los ' + L.n_completos + ' publicados'} hace más de ${d.dias} días (${tamTxt(L.completos)})</button>`
+                     : `<span class="hint" style="margin:0">Ningún vídeo lleva publicado más de ${d.dias} días.</span>`;
+  h += '</div>';
+  h += `<label class="mini-chk" style="margin-top:12px"><input type="checkbox" id="esp-auto" ${d.auto ? 'checked' : ''} onchange="espacioOpciones()"> <span>🧹 Hacerlo solo, cada día: borrar del todo lo publicado hace más de `
+     + `<select id="esp-dias" onchange="espacioOpciones()" style="width:auto;padding:3px 8px;font-size:13px;border-radius:8px">${d.dias_opciones.map(x => `<option value="${x}" ${x === d.dias ? 'selected' : ''}>${x}</option>`).join('')}</select> días `
+     + `<span class="muted">(con el mismo 🗑: queda en el Historial. Tus grabaciones de OBS nunca se tocan, ni un vídeo sin publicar)</span></span></label>`;
+  h += '<p class="hint" id="esp-msg" style="margin:6px 0 0"></p>';
+  if(d.ultimo) h += `<p class="hint" style="margin:6px 0 0">Lo último que se liberó (${esc(d.ultimo.origen)}, ${esc(fechaTxt(d.ultimo.cuando))}): ${tamTxt(d.ultimo.liberado)}`
+     + (d.ultimo.completos ? ` y ${d.ultimo.completos} ${plural(d.ultimo.completos, 'vídeo borrado', 'vídeos borrados')}` : '') + (d.ultimo.papelera ? ` · ${tamTxt(d.ultimo.papelera)} en la Papelera` : '')
+     + (d.ultimo.errores && d.ultimo.errores.length ? ` · ⚠ ${esc(d.ultimo.errores[0])}` : '') + '.</p>';
+  if(d.videos.length){
+    h += `<details style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Cada vídeo (${d.videos.length})</summary>`
+       + '<div style="overflow-x:auto"><table class="ytrows"><thead><tr><th>Vídeo</th><th>En YouTube</th><th>Pesa</th><th>Se puede borrar entero</th></tr></thead><tbody>';
+    for(const v of d.videos){
+      const est = !v.publicado ? 'sin publicar' : v.estado === 'programado' ? '📅 programado' : v.estado === 'no_esta' ? '❌ YouTube ya no lo tiene' : '✅ publicado';
+      const cuando = v.en_marcha ? 'se está procesando' : !v.publicado ? 'cuando tú quieras (🗑)' : v.estado === 'no_esta' ? 'nunca solo' : v.listo ? '✔ ya'
+                   : v.faltan_dias ? `en ${v.faltan_dias} ${plural(v.faltan_dias, 'día', 'días')}` : '—';
+      h += `<tr><td>${esc(v.titulo)}</td><td>${est}</td><td>${tamTxt(v.pc)}${v.obs ? ` <span class="muted">+ ${tamTxt(v.obs)} de OBS (no se toca)</span>` : ''}</td><td>${cuando}</td></tr>`;
+    }
+    h += '</tbody></table></div></details>';
+  }
+  document.getElementById('esp-cuerpo').innerHTML = h;
+}
+async function espacioLibera(que, btn){
+  const d = espacioDatos;
+  if(!d) return;
+  const L = d.liberable;
+  let papelera = false;
+  if(que === 'caches'){
+    if(!confirm(`¿Borrar ${tamTxt(L.caches)} de cachés?\n\nSon los dibujos animados y la música de fondo que ya se usaron en vídeos publicados (o de vídeos que ya no están aquí). `
+              + 'Si algún día vuelves a editar uno, el render los hace otra vez. No toca tus vídeos.')) return;
+  }else{
+    const lista = L.lista.slice(0, 8).map(v => '<li>' + esc(v.titulo) + '</li>').join('') + (L.lista.length > 8 ? `<li>… y ${L.lista.length - 8} más</li>` : '');
+    const r = await borraDialogo({
+      titulo: `¿Borrar ${L.n_completos} ${plural(L.n_completos, 'vídeo ya publicado', 'vídeos ya publicados')}?`,
+      html: `<p style="margin:0 0 8px">Llevan más de ${d.dias} días en YouTube. Se va de tu PC todo lo de ${plural(L.n_completos, 'este vídeo', 'cada uno')} (${tamTxt(L.completos)}): el vídeo editado, sus Shorts, el artículo y las publicaciones, la caché y la copia de la grabación; `
+          + 'su título, miniatura de YouTube, métricas y muletillas se quedan en el <b>Historial</b>.</p>'
+          + `<ul style="margin:0 0 8px;padding-left:20px">${lista}</ul>`
+          + '<p style="margin:0">🛟 <b>Tus grabaciones originales de OBS no se tocan.</b></p>',
+      nota: 'Sin marcar la casilla, va a la Papelera de reciclaje de Windows: lo recuperas de ahí, pero el espacio no se libera hasta que la vacíes. No toca YouTube.',
+      si: `🗑 Sí, borrar${L.n_completos > 1 ? 'los' : 'lo'}`});
+    if(!r.ok) return;
+    papelera = r.papelera;
+  }
+  const txt = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Liberando…';
+  let mensaje = '', color = 'var(--ok)', bases = [];
+  try{
+    const j = await (await fetch('/api/espacio/liberar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({que: que, papelera: papelera})})).json();
+    if(j.ok){
+      bases = j.bases || [];
+      mensaje = `✔ Liberados ${tamTxt(j.liberado)}` + (j.completos ? ` (${j.completos} ${plural(j.completos, 'vídeo borrado', 'vídeos borrados')}: queda${j.completos > 1 ? 'n' : ''} en el Historial)` : '')
+              + (j.papelera ? ` · ${tamTxt(j.papelera)} están en la Papelera de Windows: vacíala para liberar ese espacio` : '')
+              + (j.errores && j.errores.length ? ` · ⚠ ${j.errores[0]}` : '') + '.';
+    }else{ mensaje = '✖ ' + (j.error || 'No se pudo liberar.'); color = 'var(--bad)'; }
+  }catch(e){ mensaje = '✖ No se pudo hablar con el panel: ' + e.message; color = 'var(--bad)'; btn.disabled = false; btn.textContent = txt; }
+  for(const c of document.querySelectorAll('.jobcard[data-jid]')){      // los vídeos borrados salen de la lista sin recargar la página
+    if(bases.some(b => c.dataset.jid.startsWith(b + '--pro'))) c.remove();
+  }
+  cargaHistorial();
+  await espacioCarga(true);
+  const m = document.getElementById('esp-msg');
+  if(m){ m.style.color = color; m.textContent = mensaje; }
+}
+async function espacioOpciones(){
+  const auto = document.getElementById('esp-auto').checked, dias = Number(document.getElementById('esp-dias').value);
+  const msg = document.getElementById('esp-msg');
+  msg.style.color = ''; msg.textContent = 'Guardando…';
+  let mensaje, color = 'var(--ok)';
+  try{
+    const j = await (await fetch('/api/espacio/opciones', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto: auto, dias: dias})})).json();
+    if(j.ok) mensaje = j.auto ? `✔ Guardado. Cada día se borra del todo lo publicado hace más de ${j.dias} días (queda en el Historial; nunca tus grabaciones de OBS).`
+                              : '✔ Guardado. Nada se borra solo: tú decides con el 🗑 de cada vídeo o con los botones de aquí.';
+    else { mensaje = '✖ ' + (j.error || 'No se pudo guardar.'); color = 'var(--bad)'; }
+  }catch(e){ mensaje = '✖ No se pudo hablar con el panel: ' + e.message; color = 'var(--bad)'; }
+  await espacioCarga(true);
+  const m = document.getElementById('esp-msg');
+  if(m){ m.style.color = color; m.textContent = mensaje; }
+}
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+cargaHistorial();
+espacioCarga();
+
+// el autor (2026-09-27): «la barra… se queda en 90%… y cuando actualizo la página ahí sí cambia». Las tarjetas de «Mis
+// vídeos» se pintaban UNA vez al cargar. Ahora las que están en marcha (en cola, procesándose o en pausa) se consultan
+// cada 3 s y se actualizan solas: barra, etapa y estado. Al terminar queda «Terminado» con su miniatura, SIN recargar
+// la página: aquí puedes estar subiendo una grabación o escribiendo el contexto del próximo vídeo.
+const ESTADO_ES = {{ estado_es|tojson }};
+const EN_CURSO = ['queued', 'running', 'paused'];
+function tarjetaVivaPinta(card, j){
+  const st = j.state || '';
+  card.dataset.state = st;
+  const jm = card.querySelector('.jm');
+  if(jm) jm.textContent = (j.stage || '')
+    + (j.n_clips_result && card.dataset.tipo !== 'pro' ? ` · ${j.n_clips_result} vídeo(s)` : '');
+  const bar = card.querySelector('.bar.vivo');
+  if(bar){
+    bar.style.display = st === 'running' ? '' : 'none';
+    const i = bar.querySelector('i');
+    if(i) i.style.width = Math.max(0, Math.min(100, Number(j.pct) || 0)) + '%';
+  }
+  const b = card.querySelector('[data-estado]');
+  if(b){ b.className = 'badge ' + st; b.textContent = ESTADO_ES[st] || st; }
+  const th = card.querySelector('.th');
+  if(st === 'done' && card.dataset.tipo === 'pro' && th && !th.querySelector('img')){
+    const img = new Image(); img.alt = '';
+    img.onload = () => { th.textContent = ''; th.appendChild(img); };     // solo si ya existe (si no, se queda el ✨)
+    img.src = '/salida/' + encodeURIComponent(card.dataset.jid) + '/pro.jpg?t=' + Date.now();
+  }
+}
+async function tarjetasVivas(){
+  // en marcha, o terminado con la nota «las miniaturas B y C siguen haciéndose» (se actualiza sola cuando acaban)
+  const cards = [...document.querySelectorAll('.jobcard[data-jid]')].filter(c => EN_CURSO.includes(c.dataset.state)
+    || (c.dataset.state === 'done' && /haci[eé]ndose|haciendo aparte/.test((c.querySelector('.jm') || {}).textContent || '')));
+  if(!cards.length) return;                          // nada en marcha: no se consulta nada más
+  if(!document.hidden){                              // pestaña en segundo plano: espera a que vuelvas
+    for(const card of cards){
+      try{
+        const r = await fetch('/api/job/' + encodeURIComponent(card.dataset.jid));
+        if(r.status === 404){ card.dataset.state = 'desaparecido'; continue; }   // lo borraron: deja de preguntar
+        if(r.ok) tarjetaVivaPinta(card, await r.json());
+      }catch(e){ /* el panel no respondió: se reintenta en la próxima vuelta */ }
+    }
+  }
+  setTimeout(tarjetasVivas, 3000);
+}
+tarjetasVivas();
+</script>
+
+<script>
+// ---- modos: PRO primero (es lo que más se usa) ----
+function vtabIr(cual){
+  document.getElementById('vtab-gen').style.display = (cual==='gen') ? '' : 'none';
+  document.getElementById('vtab-pro').style.display = (cual==='pro') ? '' : 'none';
+  document.getElementById('vtab-btn-gen').classList.toggle('active', cual==='gen');
+  document.getElementById('vtab-btn-pro').classList.toggle('active', cual==='pro');
+  try{ localStorage.setItem('videos_modo', cual); }catch(e){}
+}
+(function(){
+  let inicial = 'pro';
+  try{ inicial = localStorage.getItem('videos_modo') || 'pro'; }catch(e){}
+  if(location.hash === '#gen' || location.hash === '#pro') inicial = location.hash.slice(1);
+  vtabIr(inicial);
+})();
+
+// ---- canales: elegir, crear o editar ----
+window._canalPrevio = document.getElementById('canal-pro').value;
+function canalBoton(){
+  const s = document.getElementById('canal-pro'), o = s.options[s.selectedIndex];
+  document.getElementById('canal-editar').style.display = (o && o.dataset.propio === '1') ? '' : 'none';
+}
+function canalCambio(sel){
+  if(sel.value === '__nuevo__'){ cwAbrir(''); return; }
+  window._canalPrevio = sel.value; canalBoton();
+}
+function canalesRepinta(lista, elegido){
+  const s = document.getElementById('canal-pro');
+  s.innerHTML = lista.map(c => `<option value="${c.slug}" data-propio="${c.propio ? 1 : 0}">${c.nombre.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('')
+    + '<option value="__nuevo__">➕ Nuevo canal…</option>';
+  s.value = lista.some(c => c.slug === elegido) ? elegido : lista[0].slug; window._canalPrevio = s.value; canalBoton();
+}
+canalBoton();
+
+// ---- generador: enlace o archivo ----
+function genFuente(modo){
+  const url = (modo === 'url');
+  document.getElementById('gen-fuente-url').style.display = url ? '' : 'none';
+  document.getElementById('gen-fuente-archivo').style.display = url ? 'none' : '';
+  document.getElementById('fuente-btn-url').classList.toggle('on', url);
+  document.getElementById('fuente-btn-archivo').classList.toggle('on', !url);
+  const h = document.getElementById('src-input-gen');
+  h.value = url ? document.getElementById('src-input-manual-gen').value : (window._genArchivo || '');
+  h.dispatchEvent(new Event('input'));
+}
+
+// ---- subir el vídeo (XHR: fetch no da progreso de subida) ----
+// Genérico por "ns" (namespace): 'gen' o 'pro' — cada modo tiene su propia zona, pero es el MISMO código.
+function upValida(ns){
+  const ok = !!document.getElementById('src-input-'+ns).value.trim();
+  if(!ok) alert(ns==='gen' ? 'Pega el enlace del directo, o sube un archivo, antes de generar.' : 'Sube un vídeo antes de generar.');
+  return ok;
+}
+function upValidaPro(){
+  if(!upValida('pro')) return false;
+  const cv = document.getElementById('canal-pro').value;
+  if(!cv || cv === '__nuevo__'){
+    alert('Elige para qué canal es.');
+    return false;
+  }
+  return true;
+}
+function upMuestra(ns, cual){
+  for(const id of ['up-vacio-'+ns,'up-progreso-'+ns,'up-listo-'+ns,'up-error-'+ns])
+    document.getElementById(id).style.display = (id === cual+'-'+ns) ? '' : 'none';
+}
+function upComienza(file, ns){
+  if(!file) return;
+  document.getElementById('up-nombre-'+ns).textContent = file.name;
+  upMuestra(ns, 'up-progreso');
+  document.getElementById('up-bar-'+ns).style.width = '0%';
+  document.getElementById('up-pct-'+ns).textContent = '0%';
+  const btn = document.getElementById('btn-generar-'+ns);
+  if(btn) btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('archivo', file);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '{{ url_for("videos_subir") }}');
+  xhr.upload.onprogress = (e) => {
+    if(!e.lengthComputable) return;
+    const pct = Math.round(e.loaded / e.total * 100);
+    document.getElementById('up-bar-'+ns).style.width = pct + '%';
+    document.getElementById('up-pct-'+ns).textContent = pct + '% · '
+      + (e.loaded/1048576).toFixed(0) + ' / ' + (e.total/1048576).toFixed(0) + ' MB';
+  };
+  xhr.onload = () => {
+    let r; try{ r = JSON.parse(xhr.responseText); }catch(e){ r = null; }
+    if(xhr.status === 200 && r && r.ok){
+      document.getElementById('src-input-'+ns).value = r.path;
+      if(ns === 'gen') window._genArchivo = r.path;
+      document.getElementById('up-listo-nombre-'+ns).textContent = r.nombre;
+      document.getElementById('up-listo-tam-'+ns).textContent =
+        (r.bytes/1048576).toFixed(0) + ' MB — listo';
+      upMuestra(ns, 'up-listo');
+      if(btn) btn.disabled = false;
+    } else {
+      document.getElementById('up-error-'+ns).textContent =
+        '❌ ' + ((r && r.error) || ('el panel devolvió HTTP ' + xhr.status));
+      upMuestra(ns, 'up-error');
+    }
+  };
+  xhr.onerror = () => {
+    document.getElementById('up-error-'+ns).textContent =
+      '❌ Se cortó la subida (¿el panel se cerró a medias?). Reintenta.';
+    upMuestra(ns, 'up-error');
+  };
+  xhr.send(fd);
+}
+function upQuitar(ns){
+  document.getElementById('up-file-'+ns).value = '';
+  document.getElementById('src-input-'+ns).value = '';
+  if(ns === 'gen') window._genArchivo = '';
+  const btn = document.getElementById('btn-generar-'+ns);
+  if(btn) btn.disabled = true;
+  upMuestra(ns, 'up-vacio');
+}
+function upDropzone(ns){
+  const drop = document.getElementById('up-drop-'+ns);
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add('up-sobre');
+  }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.remove('up-sobre');
+  }));
+  drop.addEventListener('drop', e => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(file) upComienza(file, ns);
+  });
+}
+upDropzone('gen'); upDropzone('pro');
+// si escribes un enlace/ruta a mano en el generador, se habilita "Generar"
+document.getElementById('src-input-gen').addEventListener('input', () => {
+  document.getElementById('btn-generar-gen').disabled = !document.getElementById('src-input-gen').value.trim();
+});
+
+async function cargaAprendizaje(){
+  const ctx = document.getElementById('ctx-input').value.trim();
+  try{
+    const r = await (await fetch('/videos/aprendizaje?contexto='+encodeURIComponent(ctx))).json();
+    const card = document.getElementById('aprend-card');
+    document.getElementById('aprend-juego').textContent = 'tema: ' + (r.juego||'general');
+    const b = document.getElementById('aprend-body');
+    if(!r.listo){
+      card.style.display = '';
+      b.innerHTML = `<p class="muted" style="font-size:13.5px;margin:0">
+        Aún no hay datos suficientes: llevas <b>${r.n||0}</b> vídeo(s) publicados de
+        <b>${r.need||4}</b> necesarios. Esto aprende despacio a propósito.</p>`;
+      return;
+    }
+    card.style.display = '';
+    const filas = (r.temas||[]).map(t=>`
+      <tr><td>${t.tema}</td>
+          <td class="m">${t.subidos}/${t.n}</td>
+          <td class="m">${t.views}</td>
+          <td class="m">${t.vpd}</td>
+          <td><div class="bar" style="width:${Math.round(t.puntos*100)}%"></div></td></tr>`).join('');
+    const sug = (r.sugerencias||[]).map(x=>`<li><b>${x.tema}</b> — ${x.motivo}</li>`).join('');
+    b.innerHTML = `
+      <table class="tv"><thead><tr>
+        <th>temática</th><th>publicados</th><th>vistas</th><th>vistas/día</th><th>rinde</th>
+      </tr></thead><tbody>${filas}</tbody></table>
+      ${sug ? `<p style="margin:12px 0 4px;font-size:14px"><b>Vuelve a tocar estos temas:</b></p>
+               <ul class="muted" style="font-size:13.5px;margin:0;padding-left:18px">${sug}</ul>` : ''}
+      ${(r.evita||[]).length ? `<p class="muted" style="font-size:12.5px;margin-top:10px">
+        Descartas siempre: ${r.evita.map(e=>e.tema).join(' · ')}</p>` : ''}`;
+  }catch(e){ /* silencioso */ }
+}
+cargaAprendizaje();
+</script>
+{% include "_canal_wizard.html" %}
+{% endblock %}

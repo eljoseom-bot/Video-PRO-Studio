@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }} · Ediciones{% endblock %}
+{% block body %}
+<h1>{{ icono }} {{ titulo }}</h1>
+<p class="sub">{{ texto }}</p>
+
+{% include "_tabs_ediciones.html" %}
+
+{# «Cambios de escena»: con siete muestras cortando entre planos a la vez no había manera de mirar una tranquilo (el autor,
+   2026-09-23) — aquí quedan QUIETAS (un fotograma) y solo se anima la que se toca, de una en una. #}
+{% set clic = (seccion == 'escenas') %}
+<div class="gal2">
+{% for e in items %}
+  <article class="ej">
+    {% if clic %}
+    <div class="ej-wrap" data-anim="{{ url_for('ediciones_previa', clave=e.clave) }}" data-poster="{{ url_for('ediciones_poster', clave=e.clave) }}">
+      <img class="ej-prev" src="{{ url_for('ediciones_poster', clave=e.clave) }}" alt="Ejemplo: {{ e.nombre }}" loading="lazy" width="800" height="450">
+      <button type="button" class="ej-play" aria-label="Ver la animación: {{ e.nombre }}">▶ Ver animación</button>
+    </div>
+    {% else %}
+    <img class="ej-prev" src="{{ url_for('ediciones_previa', clave=e.clave) }}" alt="Ejemplo animado: {{ e.nombre }}" loading="lazy" width="800" height="450">
+    {% endif %}
+    <div class="ej-cuerpo">
+      <h3>{{ e.nombre }}</h3>
+      <div class="ej-lab">Cuándo lo usa</div>
+      <ul>{% for c in e.cuando %}<li>{{ c }}</li>{% endfor %}</ul>
+      <div class="ej-lab">Qué se ve</div>
+      <p>{{ e.que_hace }}</p>
+    </div>
+  </article>
+{% endfor %}
+</div>
+
+{% if seccion == 'escenas' %}
+<div class="callout info" style="margin-top:6px"><b>Sobre el sonido.</b> Cuando cambia de verdad el encuadre suena un <i>whoosh</i> suave; si solo se quita una pausa
+  o una toma repetida, un tono etéreo más discreto. Van a 18 dB por debajo de tu voz, así nunca tapan lo que dices.
+  El director procura que cada minuto tenga al menos un cambio de cámara o una tarjeta, sin cambiar «porque sí».</div>
+<div class="callout info" style="margin-top:6px"><b>Sobre el movimiento suave.</b> No es otra escena: es la MISMA «Pantalla», «Cara» o «Pantalla con zoom» de siempre,
+  con el plano acercándose muy despacio durante toda la escena (un 6&nbsp;% al final, más una deriva de lado mínima) para que no se sienta congelado.
+  Lo decide el programa, no la IA: en cada tipo de escena una sí y una no lo lleva (la primera de cada tipo, nunca), alternando también hacia qué lado
+  se desliza. Se mueve en cada fotograma (60 fps), sin saltos. Las muestras de arriba lo enseñan acelerado (5 s) para que se note; en tu vídeo dura lo que
+  dura la escena. Se ajusta —o se apaga— en <code>transiciones.ken_burns_zoom</code> y <code>ken_burns_pan</code> del <code>config.yaml</code>.
+  «Explicativa» no lleva movimiento: su tarjeta de texto ya es el foco.</div>
+{% elif seccion == 'tarjetas' %}
+<div class="callout info" style="margin-top:6px"><b>Sobre el ritmo.</b> Una tarjeta cada 45–90 segundos de vídeo hablado, nunca una por frase. Entran y salen con un fundido
+  de menos de medio segundo y suena un tono etéreo suave. En el vídeo real llevan tu marca (colores y letra), no estos de ejemplo.</div>
+{% elif seccion == 'imagenes' %}
+<div class="callout info" style="margin-top:6px"><b>Sobre las imágenes.</b> El director decide cuántas poner y cuándo, según lo que dices — no hay un límite fijo.
+  Si Openverse no encuentra una foto libre de derechos que sirva para lo que dijiste, esa imagen se omite sin más: nunca revienta el vídeo.
+  La atribución que pide la licencia CC va en la descripción de YouTube, nunca sobre el vídeo.</div>
+{% elif seccion == 'like' %}
+<div class="callout info" style="margin-top:6px"><b>Sobre el like.</b> Siempre UNA, al 80&nbsp;% del vídeo, en TODOS los vídeos — no depende de que lo pidas ni
+  de que lo menciones (a diferencia de suscríbete, no se detecta por voz). Se cambia en <code>videos.like_*</code> del <code>config.yaml</code>,
+  y el texto de la tarjeta se puede personalizar por canal.</div>
+{% else %}
+<div class="callout info" style="margin-top:6px"><b>Sobre la cantidad.</b> Como máximo 3 por vídeo y siempre con 30 segundos o más entre una y otra. Se cambia en
+  <code>videos.suscribete_*</code> del <code>config.yaml</code>, y el texto de la tarjeta se puede personalizar por canal.</div>
+{% endif %}
+<p class="hint">La muestra es una grabación <b>dibujada</b> (no un vídeo tuyo) con los mismos recortes, tarjetas y fundidos que aplica el render de verdad.
+  Las palabras de la etiqueta oscura («Dices: …») solo están para explicar cuándo salta cada edición; no aparecen en tu vídeo.</p>
+{% if clic %}
+<script>
+// Muestras quietas (fotograma) hasta que se toca una: se descarga y se reproduce SOLO esa, y al tocar otra la anterior
+// vuelve a quedarse quieta. Tocar la misma otra vez la detiene.
+(function(){
+  const wraps = [...document.querySelectorAll('.ej-wrap')];
+  function parar(w){
+    w.querySelector('img').src = w.dataset.poster;
+    w.classList.remove('on');
+    w.querySelector('.ej-play').textContent = '▶ Ver animación';
+  }
+  function tocar(w){
+    wraps.forEach(o => { if(o !== w && o.classList.contains('on')) parar(o); });
+    w.querySelector('img').src = w.dataset.anim;
+    w.classList.add('on');
+    w.querySelector('.ej-play').textContent = '■ Detener';
+  }
+  function alternar(w){ w.classList.contains('on') ? parar(w) : tocar(w); }
+  wraps.forEach(w => {
+    w.querySelector('.ej-play').addEventListener('click', ev => { ev.stopPropagation(); alternar(w); });
+    w.querySelector('img').addEventListener('click', () => alternar(w));
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

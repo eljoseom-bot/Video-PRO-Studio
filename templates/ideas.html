@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+{% block title %}Ideas de vídeos{% endblock %}
+{% block body %}
+<style>
+ :root{ --ancho:1400px }
+ .ideas-cab{display:flex;flex-wrap:nowrap;gap:8px 22px;align-items:center;justify-content:space-between}
+ .ideas-cab > div{flex:1 1 0;min-width:0}
+ .ideas-cab > button{flex:none}
+ .ideas-cab p{margin:3px 0 0;color:var(--dim);font-size:13px}
+ .ideas-presu{font-size:12px;color:var(--dim);margin-top:4px}
+ .ideas-presu b{color:var(--fg)}
+ .ideas-proc{margin-top:8px;font-weight:650}
+ .ideas-pbar{height:16px;background:var(--card-2);border:2px solid var(--ink);border-radius:999px;overflow:hidden;margin-bottom:6px}
+ .ideas-pbar>i{display:block;height:100%;width:0;background:repeating-linear-gradient(-45deg,var(--orange) 0 10px,#FF6A45 10px 20px);transition:width .9s linear}
+ .ideas-ptxt{font-size:13.5px}
+ .ideas-barra{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;justify-content:space-between;margin:10px 0 6px}
+ .ideas-notas{font-size:12px;color:var(--dim)}
+ .ideas-solo{font-size:13px;color:var(--dim);display:inline-flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap}
+ .ideas-grupo{margin:22px 0 8px;display:flex;align-items:baseline;gap:10px}
+ .ideas-grupo h2{margin:0;font-size:19px}
+ .ideas-grupo span{color:var(--dim);font-size:13px}
+ table.ideas-tabla{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;background:var(--card);border:2px solid var(--ink);
+                   border-radius:var(--r);box-shadow:var(--sombra);overflow:hidden}
+ .ideas-tabla td{padding:5px 10px;vertical-align:middle;border-top:1px solid var(--line-soft)}
+ .ideas-tabla tr:first-child td{border-top:none}
+ .ideas-tabla tr.grupo td{background:var(--card-2);border-top:2px solid var(--ink);padding:5px 10px;font-size:13px}
+ .ideas-tabla tr.grupo:first-child td{border-top:none}
+ .ideas-tabla td.n{width:30px;text-align:right;color:var(--dim2);font-weight:800;font-size:12px;padding-right:2px}
+ .ideas-tabla td.acc{width:428px;text-align:right}
+ .ideas-tabla td.cuerpo{min-width:0;overflow:hidden}
+ .idea-t{font:800 14px/1.25 var(--font);cursor:pointer}
+ .idea-t:hover{color:var(--link)}
+ .idea-l2{display:flex;gap:8px;align-items:baseline;margin-top:0;min-width:0}
+ .idea-s{color:var(--dim);font-size:12px;line-height:1.3;flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .idea-mas{font-size:11.5px;white-space:nowrap}
+ .ideas-tabla.solo .idea-l2{display:none}
+ .idea-chip{font:800 11px/1 var(--font);letter-spacing:.04em;padding:4px 8px;border-radius:999px;border:1.5px solid var(--line-soft);
+            background:var(--card-2);color:var(--dim);text-transform:uppercase;white-space:nowrap}
+ .idea-t .idea-chip{margin-left:6px;vertical-align:2px;padding:3px 6px;font-size:10px}
+ .idea-chip.negocio{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+ .idea-chip.aprender,.idea-chip.crecimiento{background:var(--info-bg);color:var(--info);border-color:var(--info)}
+ .idea-chip.general,.idea-chip.autoridad{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+ .idea-chip.c0{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+ .idea-chip.c1{background:var(--info-bg);color:var(--info);border-color:var(--info)}
+ .idea-chip.c2{background:var(--mejora-bg);color:var(--gold-ink);border-color:var(--gold)}
+ .idea-chip.ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+ .idea-chip.aviso{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+ .ideas-tabla tr.fila.descartada .idea-t{color:var(--muted);text-decoration:line-through;font-weight:600}
+ .ideas-tabla tr.fila.descartada .idea-s{color:var(--muted)}
+ .ideas-tabla tr.fila.grabar td:first-child,.ideas-tabla tr.fila.grabada td:first-child{box-shadow:inset 4px 0 0 var(--ok)}
+ .ideas-tabla tr.fila.nueva td{background:var(--mejora-bg)}
+ .idea-acc{display:flex;flex-wrap:nowrap;gap:5px;justify-content:flex-end}
+ .ideas-tabla .btn.sm{padding:4px 9px;font-size:12px;border-width:1.5px;border-radius:8px;box-shadow:none}
+ .ideas-tabla .btn.sm:hover:not(:disabled){transform:none;box-shadow:none}
+ .ideas-tabla .btn.ref{padding:4px 11px;font-size:14px;line-height:1}
+ .idea-det{display:flex;flex-direction:column;gap:7px;font-size:13.5px;padding:2px 0 6px}
+ .idea-gancho{font-style:italic;border-left:3px solid var(--accent);padding-left:10px;color:var(--fg)}
+ .idea-k{font-weight:800;font-size:11.5px;letter-spacing:.04em;color:var(--dim);text-transform:uppercase;display:block;margin-bottom:2px}
+ .idea-det ol{margin:0;padding-left:20px}
+ .idea-det ol li{margin:2px 0}
+ .idea-evid{display:flex;flex-direction:column;gap:4px}
+ .idea-dato{font-size:12.5px;background:var(--card-2);border:1px solid var(--line-soft);border-radius:7px;padding:5px 8px;overflow-wrap:anywhere}
+ .idea-dato a{color:inherit}
+ .idea-aviso{font-size:12.5px;color:var(--warn);background:var(--warn-bg);border-radius:7px;padding:5px 8px}
+ .idea-guion{background:var(--card-2);border-radius:8px;padding:8px 12px;font-size:13.5px}
+ .idea-guion table{border-collapse:collapse;width:100%;margin-top:6px}
+ .idea-guion td{border-top:1px solid var(--line-soft);padding:6px 6px 6px 0;vertical-align:top}
+ .idea-guion td:first-child{font-weight:800;white-space:nowrap;width:1%}
+ .porgrabar{display:flex;flex-direction:column;gap:8px}
+ .porgrabar .pg{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;background:var(--card);border:1px solid var(--line-soft);
+                border-radius:10px;padding:5px 12px;font-size:13.5px}
+ .porgrabar{gap:5px}
+ .porgrabar .pg b{flex:1;min-width:220px}
+ .ideas-canal{font-size:13px;color:var(--dim);display:inline-flex;gap:8px;align-items:center}
+ .ideas-canal select{font:700 13px var(--font);padding:6px 10px;border:2px solid var(--ink);border-radius:9px;background:var(--field)}
+ .ideas-conf{font-size:12px;margin-left:10px;white-space:nowrap}
+ .ideas-x{padding:1px 7px;font-size:12px;line-height:1.3;margin-left:6px;vertical-align:1px}
+ .pg-pags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin:12px 0 4px}
+ .pg-pags .btn.on{background:var(--ink);color:var(--gold)}
+ .ideas-tabla .btn.btn-el:hover:not(:disabled){color:var(--bad);border-color:var(--bad)}
+ .ideas-x:hover:not(:disabled){color:var(--bad);border-color:var(--bad)}
+ .as .as-l{display:flex;flex-direction:column;gap:5px;font-weight:800;font-size:14px;margin:14px 0 0}
+ .as .hint{font-weight:500}
+ .as input[type=text],.as input[type=number],.as textarea{width:100%;border:2px solid var(--ink);border-radius:9px;padding:8px 10px;
+    font:500 14px var(--font);background:var(--field);color:var(--fg)}
+ .as input[type=number]{width:84px;flex:none}
+ .as textarea{resize:vertical}
+ .as .as-ops{display:flex;flex-direction:column;gap:5px;font-weight:600}
+ .as .as-op{display:flex;gap:8px;align-items:center;font-weight:600;font-size:14px;margin-top:12px;cursor:pointer}
+ .as .as-ops .as-op{margin-top:0}
+ .as .as-fila{display:flex;gap:8px;align-items:center}
+ .as .as-caja{border:1.5px solid var(--line-soft);border-radius:10px;padding:10px 12px;background:var(--card-2);margin-top:8px;display:flex;flex-direction:column;gap:8px}
+ .as .as-caja.as-l{margin-top:14px}
+ @media (max-width:760px){ .ideas-cab{flex-wrap:wrap} }
+ @media (max-width:980px){
+  .ideas-tabla,.ideas-tabla tbody{display:block}
+  .ideas-tabla tr.fila{display:grid;grid-template-columns:28px 1fr}
+  .ideas-tabla tr.fila td.acc{grid-column:2;width:auto;text-align:left;border-top:none;padding-top:0}
+  .ideas-tabla tr.grupo,.ideas-tabla tr.grupo td,.ideas-tabla tr.det,.ideas-tabla tr.det td{display:block}
+  .ideas-tabla tr.det td:first-child{display:none}
+  .idea-acc{flex-wrap:wrap;justify-content:flex-start}
+ }
+</style>
+
+<div style="display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;justify-content:space-between">
+  <h1 style="margin-bottom:4px">💡 Ideas de vídeos</h1>
+  <span id="ideas-canales"></span>
+</div>
+<section class="card" id="ideas-cab-card" style="padding:14px 18px;margin-bottom:12px">
+  <div class="ideas-cab">
+    <div>
+      <b style="font:800 16px var(--font)" id="ideas-titulo">Ideas para tus próximos vídeos, con datos de verdad</b><span id="ideas-config"></span>
+      <p id="ideas-intro">Cargando…</p>
+      <div class="ideas-presu" id="ideas-presu"></div>
+    </div>
+    <button type="button" class="btn" id="ideas-btn" onclick="pideIdeas()">✨ Dame ideas</button>
+  </div>
+  <div class="ideas-proc" id="ideas-proc" hidden></div>
+  <div id="ideas-error"></div>
+</section>
+
+<section id="ideas-asistente"></section>
+<section id="ideas-porgrabar"></section>
+<section id="ideas-semillas"></section>
+<section id="ideas-tanda"><p class="hint">Cargando…</p></section>
+<section id="ideas-anteriores"></section>
+
+<script>
+let IDEAS = null, _ideasPoll = null, CANAL = '', MODO = 'lista', ASIST = null;
+const ABIERTAS = new Set(), REFR = new Set(), GUIONANDO = new Set();
+let SOLO = false;
+try{ SOLO = localStorage.getItem('ideas_solo') === '1'; CANAL = localStorage.getItem('ideas_canal') || ''; }catch(e){}
+const EVID = {B: '🔎', T: '📈', O: '🚀', C: '💬', V: '🎬', A: '📄', H: '🛠'};
+const ORDEN_ANTIGUO = ['negocio', 'aprender', 'general', 'crecimiento', 'autoridad'];
+const IDIOMA = {es: 'ES', en: 'EN', 'es+en': 'ES+EN'};
+const IDIOMA_TIP = {es: 'Inspirada en lo que funciona en español', en: 'Inspirada en lo que funciona en inglés (escrita para tu público)',
+                    'es+en': 'Inspirada en lo que funciona en español y en inglés'};
+const JSONH = {'Content-Type': 'application/json'};
+
+// La barra de progreso de «Dame ideas»: las etapas de leer datos pesan poco y la petición a Gemini (lo largo: 1-2 min) va llenando la barra poco a poco, sin pasar de 95 % hasta que acaba.
+let _ideasTick = null;
+const ETAPAS_IDEAS = [['Arrancando', 3], ['Leyendo tus vídeos', 8], ['Mirando qué busca', 14], ['Buscando qué vídeos', 20], ['Viendo lo más visto', 28], ['Leyendo las preguntas', 34]];
+function pctIdeas(d, ahora){
+  const paso = d.paso || '';
+  const seg = Math.max(0, ahora - (d.paso_ts || ahora));
+  if(paso.startsWith('Pidiendo')) return Math.min(95, 38 + 57 * (1 - Math.exp(-seg / 50)));            // Gemini: ~100 s en la práctica
+  const e = ETAPAS_IDEAS.find(x => paso.startsWith(x[0]));
+  return e ? e[1] : 5;
+}
+function barraIdeas(){
+  const d = IDEAS; if(!d || !d.en_marcha) return;
+  const ahora = (d.ahora || Date.now() / 1000) + (Date.now() - (d._recibido || Date.now())) / 1000;   // (el reloj del panel, avanzado con el nuestro)
+  const pct = Math.round(pctIdeas(d, ahora)), seg = Math.max(0, Math.round(ahora - (d.inicio || ahora)));
+  const b = document.getElementById('ideas-bar'), t = document.getElementById('ideas-ptxt');
+  if(b) b.style.width = pct + '%';
+  if(t) t.innerHTML = `<b>${pct} %</b> · ${esc(d.paso || 'Trabajando…')} <span class="muted">· ${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}${pct >= 38 ? ' · la parte de la IA suele tardar 1-2 min' : ''}</span>`;
+  if(!_ideasTick) _ideasTick = setInterval(barraIdeas, 1000);
+}
+
+async function cargaIdeas(){
+  try{ IDEAS = await (await fetch('/api/ideas?canal=' + encodeURIComponent(CANAL))).json(); IDEAS._recibido = Date.now(); }
+  catch(e){ document.getElementById('ideas-tanda').innerHTML = '<p class="callout bad">No se pudo hablar con el panel.</p>'; return; }
+  if(IDEAS.canal !== CANAL){ CANAL = IDEAS.canal; try{ localStorage.setItem('ideas_canal', CANAL); }catch(e){} }
+  pintaIdeas();
+  clearTimeout(_ideasPoll);
+  if(IDEAS.en_marcha) _ideasPoll = setTimeout(cargaIdeas, 3000);
+}
+function cambiaCanal(v){
+  CANAL = v; MODO = 'lista'; ASIST = null; ABIERTAS.clear();
+  try{ localStorage.setItem('ideas_canal', v); }catch(e){}
+  cargaIdeas();
+}
+
+function pintaIdeas(){
+  const d = IDEAS, p = d.puede || {}, r = d.refrescar || {}, total = d.total || 20;
+  document.getElementById('ideas-canales').innerHTML = (d.canales || []).length > 1
+    ? `<label class="ideas-canal">Canal <select onchange="cambiaCanal(this.value)">${d.canales.map(c =>
+        `<option value="${esc(c.slug)}"${c.slug === d.canal ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>` : '';
+  if(d.necesita_perfil || MODO === 'asistente'){ pintaAsistente(); return; }
+  document.getElementById('ideas-asistente').innerHTML = '';
+  document.getElementById('ideas-cab-card').hidden = false;
+  const btn = document.getElementById('ideas-btn');
+  btn.textContent = `✨ Dame ${total} ideas`;
+  btn.disabled = d.en_marcha || !p.ok;
+  btn.title = p.ok ? 'Una petición al mejor Gemini Flash' : (p.motivo || '');
+  document.getElementById('ideas-titulo').textContent = `${total} ideas para tus próximos vídeos, con datos de verdad`;
+  document.getElementById('ideas-config').innerHTML = d.perfil_origen === 'config' ? ''
+    : '<a href="#" class="ideas-conf" onclick="abreConfig(); return false">⚙ Configuración de las ideas</a>';
+  document.getElementById('ideas-intro').textContent = (d.tipos || []).map(t => t.id === 'general'
+      ? `${t.n} generales${t.resumen ? ' (' + t.resumen + ')' : ''}` : `${t.n} para ${t.resumen || t.nombre}`).join(' · ')
+    + '. Toca un título para ver en qué dato se apoya.';
+  const rest = p.restantes == null ? '?' : p.restantes;
+  document.getElementById('ideas-presu').innerHTML =
+    `Una tanda = <b>1 petición</b> del mejor Gemini Flash (hoy te quedan <b>${rest}</b>; hacen falta ${p.minimo || 8} o más para no quitarle cuota a tus vídeos) · tandas hoy <b>${p.hoy || 0}/${p.max || 2}</b>`
+    + ` · cada ↻ = 1 petición de Flash-Lite, hoy <b>${r.hoy || 0}/${r.max || 30}</b>`
+    + (!p.ok && !d.en_marcha ? `<div class="callout warn" style="margin-top:8px">${esc(p.motivo || '')}</div>` : '');
+  const proc = document.getElementById('ideas-proc');
+  proc.hidden = !d.en_marcha;
+  if(d.en_marcha){ if(!proc.firstChild || !document.getElementById('ideas-bar')) proc.innerHTML = '<div class="ideas-pbar"><i id="ideas-bar"></i></div><div class="ideas-ptxt" id="ideas-ptxt"></div>'; barraIdeas(); }
+  else { proc.innerHTML = ''; clearInterval(_ideasTick); _ideasTick = null; }
+  document.getElementById('ideas-error').innerHTML = d.error ? `<div class="callout bad" style="margin-top:10px">✖ ${esc(d.error)}</div>` : '';
+
+  const pg = d.por_grabar || [];
+  document.getElementById('ideas-porgrabar').innerHTML = pg.length ? `
+    <div class="ideas-grupo" style="margin:10px 0 6px"><h2 style="font-size:16px">🎬 Por grabar · ${pg.length}</h2><span>tu checklist: lo que vas a grabar, la última que marcaste primero. Abre el guion de cada una y elimina las que no te convenzan.</span></div>
+    <div class="pg-tipos" style="margin:0 0 8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="muted" style="font-size:12.5px">Por tipo:</span>${resumenTipos(pg)}</div>
+    ${porGrabarHTML(pg)}` : '';
+
+  const se = sinGrabar(d.semillas);                           // TUS ideas favoritas (las que ya pasaste a «Por grabar» no se repiten aquí): fijas aquí hasta que las grabes o las elimines
+  document.getElementById('ideas-semillas').innerHTML = se.length ? `
+    <div class="ideas-grupo" style="margin:14px 0 6px"><h2 style="font-size:16px">⭐ Tus ideas · ${se.length}</h2><span>tus favoritas: se quedan aquí hasta que las grabes o las elimines, y la IA las usa de modelo para el estilo de las ideas generales</span></div>
+    ${semillasHTML(se)}` : '';
+
+  const tandas = d.tandas || [];
+  if(!tandas.length){
+    document.getElementById('ideas-tanda').innerHTML = `<p class="hint" style="margin-top:22px">Aún no has pedido ideas para este canal. Dale a «✨ Dame ${total} ideas».</p>`;
+    document.getElementById('ideas-anteriores').innerHTML = '';
+    return;
+  }
+  const t = tandas[0];
+  const fecha = new Date(t.ts * 1000).toLocaleString('es', {weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'});
+  const datos = Object.entries(t.datos || {}).filter(([k]) => 'BTOCV'.includes(k)).map(([k, n]) => `${EVID[k]} ${n}`).join(' · ');
+  document.getElementById('ideas-tanda').innerHTML = `
+    <div class="ideas-barra">
+      <div class="ideas-notas">Tanda del ${esc(fecha)}${btnBorra(t)} · ${esc(t.nombre_modelo || '')} · ~${t.cuota_youtube || 0} unidades de YouTube · datos: ${datos}`
+        + ((t.notas || []).length ? `<br>${t.notas.map(esc).join('<br>')}` : '') + `</div>
+      <label class="ideas-solo"><input type="checkbox" ${SOLO ? 'checked' : ''} onchange="soloTitulos(this.checked)"> Solo títulos</label>
+    </div>` + (sinGrabar(t.ideas).length ? tablaHTML(sinGrabar(t.ideas), true, Number(t.version || 1), tiposDe(t))
+                : '<p class="hint" style="margin-top:12px">Todas las ideas de esta tanda ya están arriba en «Por grabar» (o ya las grabaste).</p>');
+  const totalTandas = Math.max(tandas.length, d.tandas_total || 0), nAnt = totalTandas - 1;
+  document.getElementById('ideas-anteriores').innerHTML = nAnt > 0 ? `
+    <details class="opciones" style="margin-top:26px"><summary>Tandas anteriores (${nAnt})</summary>
+      <div style="margin:10px 0 4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="btn ghost sm" onclick="borraAnteriores()" title="Borra todas las tandas menos la más reciente. Solo se quedan las ideas que están en «Por grabar».">🗑 Borrar todas las anteriores</button>
+        <span class="muted" style="font-size:12.5px">se va todo (ideas y guiones) menos lo que está en «Por grabar»${nAnt > tandas.length - 1 ? ` · aquí se ven las ${tandas.length - 1} más recientes` : ''}</span></div>
+      ${tandas.slice(1).map(tt => `<div class="ideas-grupo"><h2 style="font-size:15px">${esc(new Date(tt.ts * 1000).toLocaleString('es', {day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'}))}</h2>${btnBorra(tt)}</div>
+        ${sinGrabar(tt.ideas).length ? tablaHTML(sinGrabar(tt.ideas), false, Number(tt.version || 1), tiposDe(tt)) : '<p class="muted" style="font-size:13px">Todas sus ideas están en «Por grabar».</p>'}`).join('')}
+    </details>` : '';
+}
+
+// Una idea que ya está arriba en «Por grabar» (o que ya grabaste) NO se repite abajo (el autor, 13-oct-2026: «si yo le doy por grabar, se debería eliminar de abajo y quedarse arriba»).
+const sinGrabar = ideas => (ideas || []).filter(i => i.estado !== 'grabar' && i.estado !== 'grabada');
+function tipoNombre(id){
+  const t = ((IDEAS || {}).tipos || []).find(x => x.id === id);
+  return (t && t.nombre) || ((IDEAS || {}).nombres_tipo || {})[id] || id;
+}
+function tipoClase(id){
+  const k = ((IDEAS || {}).tipos || []).findIndex(x => x.id === id);
+  return claseTipo(id, k < 0 ? 0 : k);
+}
+
+function tiposDe(tanda){
+  if((tanda.tipos || []).length) return tanda.tipos;                       // los tipos con los que se hizo esa tanda
+  const idx = x => { const k = ORDEN_ANTIGUO.indexOf(x); return k < 0 ? 99 : k; };           // las de antes de los perfiles
+  return [...new Set((tanda.ideas || []).map(i => i.tipo))].sort((a, b) => idx(a) - idx(b)).map(id => ({
+    id, nombre: (IDEAS.nombres_tipo || {})[id] || id, resumen: (IDEAS.descripcion_tipo || {})[id] || ''}));
+}
+function claseTipo(id, k){ return ORDEN_ANTIGUO.includes(id) ? id : 'c' + (k % 3); }
+
+function tablaHTML(ideas, actual, version, tipos){
+  let h = `<table class="ideas-tabla${SOLO ? ' solo' : ''}"><colgroup><col style="width:30px"><col><col style="width:428px"></colgroup><tbody>`, n = 0;
+  const grupo = (tp, k, ls) => `<tr class="grupo"><td colspan="3"><span class="idea-chip ${esc(claseTipo(tp.id, k))}">${esc(tp.nombre)} · ${ls.length}</span>
+          <span class="muted" style="margin-left:6px">${esc(tp.resumen || '')}</span></td></tr>`;
+  tipos.forEach((tp, k) => {
+    const ls = ideas.filter(i => i.tipo === tp.id);
+    if(!ls.length) return;
+    h += grupo(tp, k, ls);
+    for(const i of ls) h += filaHTML(i, ++n, actual, version);
+  });
+  const resto = ideas.filter(i => !tipos.some(tp => tp.id === i.tipo));
+  if(resto.length){ h += grupo({id: 'otras', nombre: 'Otras', resumen: ''}, 0, resto); for(const i of resto) h += filaHTML(i, ++n, actual, version); }
+  return h + '</tbody></table>';
+}
+
+function chipsHTML(i, modo){
+  const c = [], est = i.estado || '';
+  if(modo === 'pg') c.push(`<span class="idea-chip ${esc(tipoClase(i.tipo))}" title="El tipo de idea">${esc(tipoNombre(i.tipo))}</span>`);
+  if(i.semilla) c.push(`<span class="idea-chip c2" title="Tu potencial de contenido para esta idea (lo pusiste tú)">${'🔥'.repeat(Math.max(1, Math.min(3, i.potencial || 2)))}</span>`);
+  if(i.idioma) c.push(`<span class="idea-chip" title="${esc(IDIOMA_TIP[i.idioma] || '')}">${esc(IDIOMA[i.idioma] || i.idioma)}</span>`);
+  if(est === 'grabar' && modo !== 'pg') c.push('<span class="idea-chip ok">Por grabar</span>');
+  if(est === 'grabada') c.push('<span class="idea-chip ok">✅ grabada</span>');
+  if(i.parecida_a) c.push(`<span class="idea-chip aviso" title="Se parece a tu vídeo «${esc(i.parecida_a)}»">⚠ parecida a un vídeo tuyo</span>`);
+  if(!i.semilla && !(i.evidencia || []).length) c.push('<span class="idea-chip" title="Sin un dato concreto que la respalde: un tema que siempre sirve, o una apuesta">sin dato</span>');
+  return c.join('');
+}
+
+function filaHTML(i, n, actual, version, modo){
+  const abierta = ABIERTAS.has(i.id), ref = REFR.has(i.id), est = i.estado || '', pre = modo === 'pg' ? 'pg-' : '';
+  const cuerpo = ref ? '<div class="idea-s" style="white-space:normal">⏳ Buscando otra idea…</div>' : `
+    <div class="idea-t" onclick="abreIdea('${i.id}')" title="Ver más / ocultar">${esc(i.titulo)}${chipsHTML(i, modo)}</div>
+    <div class="idea-l2"><span class="idea-s" title="${esc(i.de_que_va || '')}">${esc(i.de_que_va || '')}</span>
+      <a href="#" class="idea-mas" onclick="return abreIdea('${i.id}')">${abierta ? 'Ocultar' : 'Ver más'}</a></div>`;
+  return `<tr class="fila ${esc(est)}" id="idea-${pre}${i.id}"><td class="n">${n}</td><td class="cuerpo">${cuerpo}</td>
+    <td class="acc">${accionesHTML(i, actual, version, ref, modo)}</td></tr>`
+    + (abierta && !ref ? `<tr class="det" id="det-${pre}${i.id}"><td></td><td colspan="2">${detalleHTML(i)}</td></tr>` : '');
+}
+
+function refrescarBtn(i, version, dis){
+  const r = IDEAS.refrescar || {};
+  let tip = `Cambia esta idea por otra del mismo tipo (1 petición a Flash-Lite · hoy ${r.hoy || 0}/${r.max || 30})`, off = dis;
+  if(version < 2){ off = ' disabled'; tip = 'Esta tanda es del formato anterior: pide una tanda nueva para poder refrescar sus ideas'; }
+  else if(r.ok === false){ off = ' disabled'; tip = r.motivo || tip; }
+  return `<button type="button" class="btn ghost sm ref" title="${esc(tip)}" aria-label="Refrescar esta idea" onclick="refrescaIdea('${i.id}')"${off}>↻</button>`;
+}
+
+function accionesHTML(i, actual, version, ref, modo){
+  const est = i.estado || '', g = i.guion, id = i.id, dis = ref ? ' disabled' : '', pg = modo === 'pg';
+  let b = '';
+  if(!pg) b += est === 'grabar' ? `<button type="button" class="btn sm" onclick="marcaIdea('${id}', '')" title="Quitar de «Por grabar»"${dis}>✔ Por grabar</button>`
+        : est === 'grabada' ? ''
+        : `<button type="button" class="btn sm" onclick="marcaIdea('${id}', 'grabar')" title="La añade a tu checklist «Por grabar» (arriba)."${dis}>🎬 La grabo</button>`;
+  if(pg) b += `<button type="button" class="btn ghost sm" onclick="marcaIdea('${id}', '')" title="La saca de «Por grabar» (si su tanda sigue, vuelve a la lista de abajo)"${dis}>↩ Quitar</button>`;
+  b += `<button type="button" class="btn ghost sm btn-el" onclick="eliminaIdea('${id}')" title="Elimina esta idea del todo (no se puede deshacer)"${dis}>🗑 Eliminar</button>`;
+  b += g ? `<button type="button" class="btn ghost sm" onclick="abreIdea('${id}')" title="Abre o cierra el guion de esta idea (no gasta nada)"${dis}>📝 ${ABIERTAS.has(id) ? 'Ocultar guion' : 'Ver guion'}</button>`
+         : `<button type="button" class="btn ghost sm" onclick="guionIdea('${id}')" title="Qué decir parte por parte, qué enseñar en pantalla y 3 títulos (1 petición a Flash-Lite)"${dis || (GUIONANDO.has(id) ? ' disabled' : '')}>${GUIONANDO.has(id) ? '⏳ escribiendo…' : '📝 Guion'}</button>`;
+  if(g) b += `<button type="button" class="btn ghost sm" onclick="guionIdea('${id}')" title="Escribe otro guion (1 petición a Flash-Lite)"${dis || (GUIONANDO.has(id) ? ' disabled' : '')}>${GUIONANDO.has(id) ? '⏳' : '↻ guion'}</button>`;
+  b += `<button type="button" class="btn ghost sm" data-txt="${esc(ideaTexto(i))}" onclick="copyIdea(this)"${dis}>copiar</button>`;
+  if(actual && !pg && est !== 'grabar' && est !== 'grabada') b += refrescarBtn(i, version, dis);
+  return `<div class="idea-acc">${b}</div>`;
+}
+
+function detalleHTML(i){
+  const g = i.guion;
+  const ev = (i.evidencia || []).map(e => `<div class="idea-dato">${EVID[e.codigo[0]] || '•'} ${e.url
+      ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.texto)}</a>` : esc(e.texto)}</div>`).join('');
+  return `<div class="idea-det">
+    ${i.gancho ? `<div class="idea-gancho">«${esc(i.gancho)}»</div>` : ''}
+    ${(i.de_que_va || '').length > 150 ? `<div><span class="idea-k">De qué va</span>${esc(i.de_que_va)}</div>` : ''}
+    ${(i.puntos || []).length ? `<div><span class="idea-k">Qué contar</span><ol>${i.puntos.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
+    ${i.por_que ? `<div><span class="idea-k">Por qué ahora</span>${esc(i.por_que)}</div>` : ''}
+    ${ev ? `<div class="idea-evid">${ev}</div>` : i.semilla ? `<div class="muted" style="font-size:13px">⭐ Idea tuya (potencial ${'🔥'.repeat(Math.max(1, Math.min(3, i.potencial || 2)))}): la tienes fija arriba hasta que la grabes o la descartes. «📝 Guion» te la desarrolla.</div>`
+      : '<div class="idea-aviso">Sin un dato concreto que la respalde: es un tema que siempre sirve, o una apuesta.</div>'}
+    ${i.tu_aporte ? `<div><span class="idea-k">Tu aporte</span>${esc(i.tu_aporte)}</div>` : ''}
+    ${i.semilla ? '' : `<div class="muted" style="font-size:13px">${i.formato ? esc(i.formato) + (i.dificultad ? ' · dificultad ' + esc(i.dificultad) : '') + ' · ' : ''}Para: ${esc(i.para_quien || '—')}${i.cta
+      ? ` · lleva a: ${i.cta.url ? `<a href="${esc(i.cta.url)}" target="_blank" rel="noopener">${esc(i.cta.texto)}</a>` : esc(i.cta.texto)}` : ''}</div>`}
+    ${i.parecida_a ? `<div class="idea-aviso">⚠ Se parece a tu vídeo «${esc(i.parecida_a)}»</div>` : ''}
+    ${g ? `<div class="idea-guion"><b>📝 Guion</b> · ~${g.duracion_min || '?'} min
+        ${(g.titulos || []).length ? `<div style="margin-top:6px"><span class="idea-k">Títulos</span>${g.titulos.map(esc).join('<br>')}</div>` : ''}
+        <table>${(g.partes || []).map(x => `<tr><td>${esc(x.parte)}</td><td>${esc(x.que_decir)}${x.en_pantalla
+          ? `<div class="muted" style="font-size:12.5px">🖥 ${esc(x.en_pantalla)}</div>` : ''}</td></tr>`).join('')}</table>
+        ${g.cta ? `<div style="margin-top:6px"><span class="idea-k">Llamada a la acción</span>${esc(g.cta)}</div>` : ''}</div>` : ''}
+  </div>`;
+}
+
+function ideaTexto(i){
+  return [i.titulo, i.de_que_va, i.gancho ? '«' + i.gancho + '»' : '', i.por_que, ...(i.puntos || []).map((x, k) => `${k + 1}. ${x}`)].filter(Boolean).join('\n');
+}
+function abreIdea(id){
+  if(ABIERTAS.has(id)) ABIERTAS.delete(id); else ABIERTAS.add(id);
+  pintaIdeas();
+  return false;
+}
+function soloTitulos(on){
+  SOLO = !!on;
+  try{ localStorage.setItem('ideas_solo', SOLO ? '1' : '0'); }catch(e){}
+  pintaIdeas();
+}
+async function copyIdea(btn){
+  try{ await navigator.clipboard.writeText(btn.dataset.txt || ''); btn.textContent = '✔ copiado'; }
+  catch(e){ btn.textContent = 'no se pudo'; }
+  setTimeout(() => { btn.textContent = 'copiar'; }, 1400);
+}
+async function pideIdeas(){
+  const btn = document.getElementById('ideas-btn');
+  btn.disabled = true;
+  try{
+    const r = await (await fetch('/api/ideas/generar', {method: 'POST', headers: JSONH, body: JSON.stringify({canal: CANAL})})).json();
+    if(!r.ok) document.getElementById('ideas-error').innerHTML = `<div class="callout bad" style="margin-top:10px">✖ ${esc(r.error || 'No se pudo.')}</div>`;
+  }catch(e){ document.getElementById('ideas-error').innerHTML = `<div class="callout bad" style="margin-top:10px">✖ ${esc(e.message)}</div>`; }
+  cargaIdeas();
+}
+async function marcaIdea(id, estado){
+  try{ await fetch('/api/ideas/' + encodeURIComponent(id) + '/marca', {method: 'POST', headers: JSONH, body: JSON.stringify({estado})}); }
+  finally{ cargaIdeas(); }
+}
+async function guionIdea(id){
+  GUIONANDO.add(id); pintaIdeas();
+  try{
+    const r = await (await fetch('/api/ideas/' + encodeURIComponent(id) + '/guion', {method: 'POST'})).json();
+    if(!r.ok) alert(r.error || 'No se pudo escribir el guion.'); else ABIERTAS.add(id);
+  }catch(e){ alert('No se pudo hablar con el panel: ' + e.message); }
+  GUIONANDO.delete(id);
+  cargaIdeas();
+}
+async function refrescaIdea(id){
+  if(REFR.size) return;                                  // de uno en uno: el panel los atiende en fila
+  REFR.add(id); pintaIdeas();
+  let r;
+  try{ r = await (await fetch('/api/ideas/' + encodeURIComponent(id) + '/refrescar', {method: 'POST'})).json(); }
+  catch(e){ r = {ok: false, error: 'No se pudo hablar con el panel: ' + e.message}; }
+  REFR.delete(id); ABIERTAS.delete(id);
+  if(!r.ok) alert(r.error || 'No se pudo refrescar esa idea.');
+  await cargaIdeas();
+  if(r.ok && r.idea){
+    const fila = document.getElementById('idea-' + r.idea.id);
+    if(fila){ fila.classList.add('nueva'); setTimeout(() => fila.classList.remove('nueva'), 2500); }
+  }
+}
+function verIdea(id, intento = 0){
+  const el = document.getElementById('idea-' + id);
+  if(el){ el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.add('nueva'); setTimeout(() => el.classList.remove('nueva'), 2500); return; }
+  const ant = document.querySelector('#ideas-anteriores details');       // una idea de una tanda anterior: se abre y se busca otra vez
+  if(ant && !intento){ ant.open = true; setTimeout(() => verIdea(id, 1), 50); }
+}
+
+// ------------------------------------------------------------ la configuración de las ideas de un canal (la primera vez, y para editarla)
+function pintaAsistente(){
+  for(const id of ['ideas-porgrabar', 'ideas-semillas', 'ideas-tanda', 'ideas-anteriores']) document.getElementById(id).innerHTML = '';
+  document.getElementById('ideas-cab-card').hidden = true;
+  const el = document.getElementById('ideas-asistente');
+  if(!ASIST){ el.innerHTML = '<p class="hint">Cargando…</p>'; iniciaAsistente(); return; }
+  if(ASIST.pintado === ASIST.paso) return;                 // (un repintado de fondo no borra lo que se está escribiendo)
+  el.innerHTML = ASIST.paso === 1 ? asistente1HTML() : asistente2HTML();
+  ASIST.pintado = ASIST.paso;
+  if(ASIST.paso === 2) totalPerfil();
+}
+function repinta(){ if(ASIST) ASIST.pintado = null; pintaIdeas(); }
+async function iniciaAsistente(){
+  const canal = CANAL;
+  let r;
+  try{ r = await (await fetch('/api/ideas/perfil?canal=' + encodeURIComponent(canal))).json(); }
+  catch(e){ document.getElementById('ideas-asistente').innerHTML = '<p class="callout bad">No se pudo hablar con el panel.</p>'; return; }
+  if(canal !== CANAL) return;
+  const editando = MODO === 'asistente' && r.perfil;
+  ASIST = {paso: editando ? 2 : 1, info: r, aviso: '', pintado: null, perfil: r.perfil ? JSON.parse(JSON.stringify(r.perfil)) : null,
+           resp: {tema: (r.base || {}).tema || '', objetivo: '', objetivo_texto: '', publicos: '', idiomas: 'es',
+                  destinos: ((r.base || {}).destinos || []).slice(0, 2), datos_propios: !!r.datos_propios_sugerido}};
+  pintaIdeas();
+}
+function abreConfig(){ MODO = 'asistente'; ASIST = null; pintaIdeas(); }
+function cancelaConfig(){ MODO = 'lista'; ASIST = null; pintaIdeas(); }
+function volverRespuestas(){ sincronizaPerfil(); ASIST.paso = 1; repinta(); }
+
+function asistente1HTML(){
+  const i = ASIST.info, r = ASIST.resp, b = i.base || {};
+  const objs = Object.entries(i.objetivos || {}).map(([k, v]) =>
+    `<label class="as-op"><input type="radio" name="as-obj" value="${esc(k)}"${r.objetivo === k ? ' checked' : ''}> ${esc(v)}</label>`).join('');
+  const dest = [0, 1].map(n => `<div class="as-fila"><input type="text" class="as-dn" placeholder="Nombre (p. ej. Mi tienda)" value="${esc((r.destinos[n] || {}).nombre || '')}">
+      <input type="text" class="as-du" placeholder="https://…" value="${esc((r.destinos[n] || {}).url || '')}"></div>`).join('');
+  return `<section class="card as">
+    <h2 style="margin-top:0">Antes de pedir ideas, cuéntame de tu canal «${esc(b.nombre || '')}»</h2>
+    <p class="hint">Es solo la primera vez: con esto las ideas salen de TU tema (y no de otro). Después no te lo vuelvo a preguntar; lo puedes cambiar cuando quieras desde «⚙ Configuración de las ideas».</p>
+    <label class="as-l">1 · ¿De qué trata tu canal?<textarea id="as-tema" rows="2" placeholder="Una o dos frases">${esc(r.tema)}</textarea></label>
+    <div class="as-l">2 · ¿Qué quieres lograr con el canal?<div class="as-ops">${objs}</div>
+      <textarea id="as-objtexto" rows="2" placeholder="Cuéntalo con tus palabras (opcional)">${esc(r.objetivo_texto)}</textarea></div>
+    <label class="as-l">3 · ¿A qué tipos de público quieres llegar? <span class="hint">Uno por línea, máximo ${i.maximo_publicos || 3}. Si lo dejas vacío, te propongo yo.</span>
+      <textarea id="as-publicos" rows="3" placeholder="p. ej. jugadores nuevos&#10;jugadores competitivos">${esc(r.publicos)}</textarea></label>
+    <div class="as-l">4 · ¿Dónde miramos qué funciona?<div class="as-ops">
+      <label class="as-op"><input type="radio" name="as-idi" value="es"${r.idiomas === 'es' ? ' checked' : ''}> Solo en español</label>
+      <label class="as-op"><input type="radio" name="as-idi" value="es+en"${r.idiomas === 'es+en' ? ' checked' : ''}> En español y en inglés</label></div></div>
+    <div class="as-l">5 · ¿A dónde quieres llevar a la gente? <span class="hint">Opcional: tu web, tu tienda, tu curso… (con https://)</span>${dest}</div>
+    <label class="as-op"><input type="checkbox" id="as-propios"${r.datos_propios ? ' checked' : ''}> Usar los datos de mi canal de YouTube (mis vídeos y las búsquedas que llegan a mi canal)</label>
+    <div class="hint">${i.canal_yt ? `El canal que tienes conectado a YouTube es «${esc(i.canal_yt)}».` : 'Ahora no hay un canal conectado a YouTube.'}
+      ${i.datos_propios_sugerido ? '' : 'Este parece otro canal: déjalo sin marcar si no es el que tienes conectado.'}</div>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="btn" id="as-btn" onclick="proponePerfil()">✨ Proponer mi configuración</button>
+      <span id="as-estado" class="hint"></span></div>
+  </section>`;
+}
+function leeRespuestas(){
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const obj = document.querySelector('input[name="as-obj"]:checked'), idi = document.querySelector('input[name="as-idi"]:checked');
+  const dn = [...document.querySelectorAll('.as-dn')], du = [...document.querySelectorAll('.as-du')];
+  return {tema: v('as-tema'), objetivo: obj ? obj.value : '', objetivo_texto: v('as-objtexto'), publicos: v('as-publicos'), idiomas: idi ? idi.value : 'es',
+          destinos: dn.map((e, k) => ({nombre: e.value.trim(), url: du[k].value.trim()})).filter(x => x.nombre || x.url),
+          datos_propios: document.getElementById('as-propios').checked};
+}
+async function proponePerfil(){
+  const resp = leeRespuestas();
+  if(resp.tema.trim().length < 10){ document.getElementById('as-estado').textContent = 'Cuéntame de qué trata tu canal (al menos una frase).'; return; }
+  ASIST.resp = resp;
+  document.getElementById('as-btn').disabled = true;
+  document.getElementById('as-estado').textContent = '⏳ Pensando tu configuración… (unos segundos)';
+  let r;
+  try{ r = await (await fetch('/api/ideas/perfil/proponer', {method: 'POST', headers: JSONH, body: JSON.stringify({canal: CANAL, ...resp})})).json(); }
+  catch(e){ r = null; }
+  if(!r || !r.ok){
+    document.getElementById('as-btn').disabled = false;
+    document.getElementById('as-estado').textContent = 'No se pudo hablar con el panel: prueba otra vez.';
+    return;
+  }
+  ASIST.perfil = r.perfil; ASIST.aviso = r.aviso || ''; ASIST.paso = 2; repinta();
+}
+
+function asistente2HTML(){
+  const p = ASIST.perfil, i = ASIST.info, primera = IDEAS.necesita_perfil, b = i.base || {};
+  const vs = (p.vertientes || []).map((v, k) => `<div class="as-vert as-caja">
+      <div class="as-fila"><input type="text" class="v-nombre" maxlength="28" placeholder="Nombre del público" value="${esc(v.nombre)}">
+        <input type="number" class="v-n" min="1" max="15" value="${v.n}" oninput="totalPerfil()" title="Cuántas ideas lleva">
+        <button type="button" class="btn ghost sm" onclick="quitaPublico(${k})" title="Quitar este público">✖</button></div>
+      <textarea class="v-desc" rows="2" placeholder="A quién va dirigido y qué tipo de ideas (1-2 frases)">${esc(v.descripcion)}</textarea></div>`).join('');
+  const g = p.general || {};
+  return `<section class="card as">
+    <h2 style="margin-top:0">${primera ? 'Tu configuración de ideas' : '⚙ Configuración de las ideas'} · ${esc(b.nombre || '')}</h2>
+    ${ASIST.aviso ? `<div class="callout warn">${esc(ASIST.aviso)}</div>` : ''}
+    <p class="hint">Revísala y ajústala: así se piden las ideas. ${primera ? '' : 'Los cambios valen desde la próxima tanda.'}</p>
+    <label class="as-l">De qué trata tu canal<textarea id="pf-tema" rows="2">${esc(p.tema)}</textarea></label>
+    <label class="as-l">Lo que quieres lograr <span class="hint">manda sobre todo lo demás al elegir las ideas</span><textarea id="pf-objetivo" rows="3">${esc(p.objetivo)}</textarea></label>
+    <div class="as-l">Públicos a los que quieres llegar <span class="hint">y cuántas ideas lleva cada uno</span>${vs}
+      ${(p.vertientes || []).length < (i.maximo_publicos || 3) ? '<div><button type="button" class="btn ghost sm" onclick="anadePublico()">＋ Añadir un público</button></div>' : ''}</div>
+    <div class="as-l as-caja">Ideas generales <span class="hint">las abiertas: lo que más funciona en tu tema</span>
+      <div class="as-fila"><input type="text" id="pf-g-nombre" maxlength="28" value="${esc(g.nombre || 'Generales')}">
+        <input type="number" id="pf-g-n" min="1" max="25" value="${g.n || 8}" oninput="totalPerfil()"></div>
+      <textarea id="pf-g-desc" rows="2">${esc(g.descripcion)}</textarea></div>
+    <div id="pf-total" class="hint" style="margin-top:6px"></div>
+    <label class="as-l">Qué busca la gente en YouTube sobre tu tema <span class="hint">una búsqueda por línea${p.idiomas === 'es+en' ? ' (en español)' : ''}</span><textarea id="pf-busq" rows="3">${esc((p.busquedas || []).join('\n'))}</textarea></label>
+    ${p.idiomas === 'es+en' ? `<label class="as-l">… y lo mismo en inglés<textarea id="pf-busq-en" rows="3">${esc((p.busquedas_en || []).join('\n'))}</textarea></label>` : ''}
+    <label class="as-op"><input type="checkbox" id="pf-propios"${p.datos_propios ? ' checked' : ''}> Usar los datos de mi canal de YouTube (mis vídeos y las búsquedas que llegan a mi canal)</label>
+    <div id="pf-err"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+      <button type="button" class="btn" onclick="guardaPerfil()">${primera ? '✔ Guardar y empezar' : '✔ Guardar'}</button>
+      ${primera ? '<button type="button" class="btn ghost" onclick="volverRespuestas()">← Cambiar mis respuestas</button>' : '<button type="button" class="btn ghost" onclick="cancelaConfig()">Cancelar</button>'}
+    </div></section>`;
+}
+function leePerfil(){
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const vert = [...document.querySelectorAll('.as-vert')].map(el => ({nombre: el.querySelector('.v-nombre').value,
+    descripcion: el.querySelector('.v-desc').value, n: parseInt(el.querySelector('.v-n').value, 10) || 0}));
+  const p = ASIST.perfil;
+  return {tema: v('pf-tema'), objetivo: v('pf-objetivo'), vertientes: vert,
+          general: {nombre: v('pf-g-nombre'), descripcion: v('pf-g-desc'), n: parseInt(v('pf-g-n'), 10) || 0},
+          busquedas: v('pf-busq'), busquedas_en: p.idiomas === 'es+en' ? v('pf-busq-en') : '', idiomas: p.idiomas, destinos: p.destinos || [],
+          datos_propios: document.getElementById('pf-propios').checked, origen: p.origen || 'manual'};
+}
+function sincronizaPerfil(){
+  if(!ASIST || ASIST.paso !== 2 || !document.getElementById('pf-tema')) return;
+  const q = leePerfil();
+  ASIST.perfil = {...ASIST.perfil, ...q, busquedas: q.busquedas.split('\n').map(s => s.trim()).filter(Boolean),
+                  busquedas_en: q.busquedas_en.split('\n').map(s => s.trim()).filter(Boolean)};
+}
+function anadePublico(){ sincronizaPerfil(); ASIST.perfil.vertientes.push({nombre: '', descripcion: '', n: 4}); repinta(); }
+function quitaPublico(k){ sincronizaPerfil(); ASIST.perfil.vertientes.splice(k, 1); repinta(); }
+function totalPerfil(){
+  const el = document.getElementById('pf-total');
+  if(!el || !ASIST) return;
+  const n = [...document.querySelectorAll('.v-n')].reduce((a, e) => a + (parseInt(e.value, 10) || 0), 0) + (parseInt((document.getElementById('pf-g-n') || {}).value, 10) || 0);
+  const lo = ASIST.info.total_min || 10, hi = ASIST.info.total_max || 30;
+  el.innerHTML = `Total: <b>${n}</b> ideas por tanda ${n >= lo && n <= hi ? '' : `<span style="color:var(--bad)">(tienen que ser entre ${lo} y ${hi})</span>`}`;
+}
+async function guardaPerfil(){
+  const perfil = leePerfil();
+  let r;
+  try{ r = await (await fetch('/api/ideas/perfil', {method: 'POST', headers: JSONH, body: JSON.stringify({canal: CANAL, perfil})})).json(); }
+  catch(e){ r = {ok: false, errores: ['No se pudo hablar con el panel.']}; }
+  if(!r.ok){
+    document.getElementById('pf-err').innerHTML = `<div class="callout bad" style="margin-top:10px">${(r.errores || [r.error || 'No se pudo guardar.']).map(esc).join('<br>')}</div>`;
+    return;
+  }
+  MODO = 'lista'; ASIST = null;
+  await cargaIdeas();
+}
+// TUS ideas favoritas: la misma fila que las demás (grabarla, descartarla, guion, copiar), sin «↻» (son tuyas)
+function semillasHTML(se){
+  let h = `<table class="ideas-tabla${SOLO ? ' solo' : ''}"><colgroup><col style="width:30px"><col><col style="width:428px"></colgroup><tbody>`;
+  se.forEach((i, k) => { h += filaHTML(i, k + 1, false, 2); });
+  return h + '</tbody></table>';
+}
+// la ✖ junto a la fecha de cada tanda: borra la tanda entera (no se puede deshacer); si tiene ideas en «Por grabar», el panel no la borra y dice cuál
+let PG_PAG = 1;
+function resumenTipos(pg){
+  const n = {};
+  pg.forEach(i => { n[i.tipo] = (n[i.tipo] || 0) + 1; });
+  const orden = ((IDEAS || {}).tipos || []).map(t => t.id);
+  return Object.keys(n).sort((a, b) => { const x = orden.indexOf(a), y = orden.indexOf(b); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); })
+    .map(id => `<span class="idea-chip ${esc(tipoClase(id))}">${esc(tipoNombre(id))} · ${n[id]}</span>`).join(' ');
+}
+const PG_POR = 20;                                        // 20 ideas por página en «Por grabar» (el autor, 12-oct-2026)
+function porGrabarHTML(pg){
+  const paginas = Math.max(1, Math.ceil(pg.length / PG_POR));
+  if(PG_PAG > paginas) PG_PAG = paginas;
+  const ini = (PG_PAG - 1) * PG_POR;
+  let h = `<table class="ideas-tabla${SOLO ? ' solo' : ''}"><colgroup><col style="width:30px"><col><col style="width:428px"></colgroup><tbody>`;
+  pg.slice(ini, ini + PG_POR).forEach((i, k) => { h += filaHTML(i, ini + k + 1, false, 2, 'pg'); });
+  h += '</tbody></table>';
+  if(paginas > 1){
+    const ver = new Set([1, paginas]);
+    for(let p = PG_PAG - 2; p <= PG_PAG + 2; p++) if(p >= 1 && p <= paginas) ver.add(p);
+    const lista = [...ver].sort((x, y) => x - y);
+    const btn = (p, txt, off) => `<button type="button" class="btn ghost sm${p === PG_PAG && !txt ? ' on' : ''}"${off ? ' disabled' : ` onclick="pgPagina(${p})"`}>${txt || p}</button>`;
+    let nav = btn(PG_PAG - 1, '‹ Anterior', PG_PAG <= 1);
+    lista.forEach((p, k) => { if(k && p - lista[k - 1] > 1) nav += '<span class="muted">…</span>'; nav += btn(p); });
+    nav += btn(PG_PAG + 1, 'Siguiente ›', PG_PAG >= paginas);
+    h += `<div class="pg-pags">${nav}<span class="muted">Ideas ${ini + 1}–${Math.min(pg.length, ini + PG_POR)} de ${pg.length} · página ${PG_PAG} de ${paginas}</span></div>`;
+  }
+  return h;
+}
+function pgPagina(n){ PG_PAG = n; pintaIdeas(); document.getElementById('ideas-porgrabar').scrollIntoView({behavior: 'smooth', block: 'start'}); }
+async function eliminaIdea(id){                           // sin confirmar: es la limpieza rápida de tu checklist; se elimina del todo
+  ABIERTAS.delete(id);
+  try{ await fetch('/api/ideas/' + encodeURIComponent(id) + '/eliminar', {method: 'POST'}); }catch(e){}
+  await cargaIdeas();
+}
+async function borraAnteriores(){
+  const n = ((IDEAS || {}).tandas_total || 0) - 1, k = ((IDEAS || {}).por_grabar || []).length;
+  if(!confirm(`¿Borrar las ${n} tandas anteriores?\n\nSe van todas sus ideas y guiones, menos lo que tienes en «Por grabar» (${k}).\nNo se puede deshacer.`)) return;
+  let r;
+  try{ r = await (await fetch('/api/ideas/tandas/anteriores/borrar', {method: 'POST', headers: JSONH, body: JSON.stringify({canal: CANAL})})).json(); }
+  catch(e){ r = {ok: false, error: 'No se pudo hablar con el panel: ' + e.message}; }
+  if(!r.ok) alert(r.error || 'No se pudo borrar.');
+  await cargaIdeas();
+}
+function btnBorra(t){
+  return ` <button type="button" class="btn ghost sm ideas-x" title="Borrar esta tanda (menos lo que está en «Por grabar»; no se puede deshacer)" aria-label="Borrar esta tanda" onclick="borraTanda('${esc(t.id)}')">✖</button>`;
+}
+async function borraTanda(id){
+  const t = (IDEAS.tandas || []).find(x => x.id === id);
+  if(!t) return;
+  const cuando = new Date(t.ts * 1000).toLocaleString('es', {weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'});
+  const sus = (t.ideas || []).filter(x => x.estado === 'grabar').length;
+  if(!confirm(`¿Borrar la tanda del ${cuando} (${(t.ideas || []).length} ideas)?\n\nSe van todas sus ideas y guiones${sus ? `, menos las ${sus} que están en «Por grabar»` : ''}. No se puede deshacer.`)) return;
+  let r;
+  try{ r = await (await fetch('/api/ideas/tanda/' + encodeURIComponent(id) + '/borrar', {method: 'POST'})).json(); }
+  catch(e){ r = {ok: false, error: 'No se pudo hablar con el panel: ' + e.message}; }
+  if(!r.ok && r.codigo !== 'no_esta') alert(r.error || 'No se pudo borrar la tanda.');
+  await cargaIdeas();
+}
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+cargaIdeas();
+</script>
+{% endblock %}

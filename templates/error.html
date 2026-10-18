@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}No encontrado{% endblock %}
+{% block body %}
+<div class="vacio" style="margin-top:30px">
+  <div class="big">🧭</div>
+  <h1 style="margin:12px 0 6px">No encuentro esa página</h1>
+  <p class="muted" style="max-width:520px;margin:0 auto 18px">{{ mensaje or 'Puede que el enlace esté mal escrito, o que ese vídeo ya no esté (por ejemplo, si lo limpiaste).' }}</p>
+  <a class="btn lg" href="{{ url_for('videos_page') }}">Volver a mis vídeos</a>
+</div>
+{% endblock %}

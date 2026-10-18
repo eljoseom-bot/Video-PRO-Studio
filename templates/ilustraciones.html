@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Ilustraciones animadas{% endblock %}
+{% block body %}
+<style>
+ .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:14px}
+ .ilu{background:var(--card);border:2px solid var(--ink);border-radius:14px;overflow:hidden;box-shadow:var(--sombra)}
+ .ilu .lienzo{background:
+     conic-gradient(#E9DFCB 25%,#F4EBDA 0 50%,#E9DFCB 0 75%,#F4EBDA 0) 0 0/24px 24px;
+   display:flex;align-items:center;justify-content:center;aspect-ratio:1/1}
+ .ilu .lienzo img{width:100%;height:100%;object-fit:contain;display:block}
+ .ilu .cuerpo{padding:11px 14px 14px}
+ .ilu h3{margin:0 0 3px;font-size:14px}
+ .ilu code{font-size:11px}
+ .ilu p{margin:7px 0 0;font-size:12px;color:var(--dim);line-height:1.45}
+ .res{font:12px/1.55 ui-monospace,Consolas,monospace;white-space:pre-wrap}
+ .res .mal{color:var(--bad)} .res .bien{color:var(--ok)}
+</style>
+<h1>✨ Ilustraciones animadas</h1>
+<p class="sub" style="max-width:860px">La cuarta acción de tus vídeos, junto a los cambios de escena, las tarjetas y el suscríbete:
+cuando tu explicación es <b>muy visual</b>, sale arriba a la derecha un símbolo con movimiento que la refuerza.
+Están dibujadas por código con los colores y el estilo de tu marca (contorno de tinta, sombra dura), así que siempre
+quedan iguales y no hay problemas de licencias. <b>El director (Gemini) elige</b> cuál de esta biblioteca encaja con lo
+que dices y cuándo; nunca pone más de <b>{{ maxpm }}</b> por minuto ni con menos de <b>{{ sep }} s</b> entre una y otra.</p>
+
+{% include "_tabs_ediciones.html" %}
+
+<div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+  <button class="btn ghost" id="btn-prueba" onclick="prueba()">🧪 Comprobar las {{ escenas|length }} escenas</button>
+  <span class="muted" style="font-size:12px">Revisa que cada una entre y salga bien, se mueva, no se corte y sea idéntica cada vez (unos segundos).</span>
+  <div id="res" class="res" style="flex-basis:100%"></div>
+</div>
+
+<div class="gal">
+{% for e in escenas %}
+  <div class="ilu">
+    <div class="lienzo"><img loading="lazy" src="{{ url_for('ilustraciones_previa', clave=e.clave) }}" alt="{{ e.nombre }}"></div>
+    <div class="cuerpo">
+      <h3>{{ e.nombre }} <code>{{ e.clave }}</code></h3>
+      <p><b>Cuando dices:</b> {{ e.significa }}</p>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<script>
+async function prueba(){
+  const b = document.getElementById('btn-prueba'), r = document.getElementById('res');
+  b.disabled = true; r.textContent = 'Comprobando…';
+  try{
+    const d = await (await fetch('/api/ilustraciones/prueba', {method:'POST'})).json();
+    const mal = d.filas.filter(f => !f.ok);
+    r.innerHTML = `<span class="${mal.length?'mal':'bien'}">${d.filas.length - mal.length} de ${d.filas.length} escenas correctas</span>`
+      + mal.map(f => `\n<span class="mal">✖ ${f.escena}: ${f.problemas.join('; ')}</span>`).join('');
+  }catch(e){ r.innerHTML = '<span class="mal">No se pudo comprobar: ' + e.message + '</span>'; }
+  b.disabled = false;
+}
+</script>
+{% endblock %}

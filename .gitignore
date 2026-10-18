@@ -1,0 +1,48 @@
+# Entorno y basura de Python
+.venv/
+__pycache__/
+*.pyc
+
+# Todo lo que genera el programa (pesa GB y se regenera): fuentes, renders, cachés
+work/
+videos/
+inbox/*
+!inbox/.gitkeep
+
+# Secretos y sesiones — NUNCA al repositorio (la clave de Gemini se vuelve a pedir en AI Studio)
+.env
+.env.*
+client_secret.json
+*token*.json
+panel-pass.txt
+tunnel-url.txt
+
+# Tu música (75 MB de la Librería de Audio de YouTube: no se redistribuye ni engorda el repo).
+# Va en la copia de seguridad (botón del panel, pestaña Sistema), no en Git.
+musica_fondo/*
+!musica_fondo/README.md
+
+# Tus caras, tu retrato y tu logo: fotos personales, nunca al repositorio
+mis_caras/*
+!mis_caras/README.md
+mi_marca/*
+!mi_marca/README.md
+
+# TUS canales y TUS ajustes (el programa se actualiza sin pisarlos)
+canales/*
+!canales/.gitkeep
+config.local.yaml
+
+# Copias de seguridad y restos de pruebas
+backups/
+*.zip
+*.log
+_selftest/
+
+# Ajustes locales de herramientas
+.claude/settings.local.json
+muestras/
+
+# Shorts · TikTok: cada Short con su vídeo de origen subido, audio, transcripción y montaje (pesa; se borra con el 🗑 de la herramienta)
+shorts_tt/
+muestras/

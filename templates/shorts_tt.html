@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Shorts · TikTok{% endblock %}
+{% block body %}
+<h1>🎬 Shorts · TikTok</h1>
+<p class="hint" style="margin:0 0 14px;max-width:860px">Un <b>Short vertical muy editado</b> para <b>YouTube, TikTok e Instagram</b>, a partir de un vídeo ya hablado (de 1 a 2 minutos o menos). <b>Todos los silencios fuera</b>, tu cara arriba, la pantalla en medio
+  <b>sin la cámara</b> (con acercamientos), subtítulos palabra a palabra y <b>algo que pasa cada 2 segundos</b>: cortes con acercamiento, palabras clave, tarjetas, ilustraciones, escenas a pantalla completa y un sonido en cada corte y cada animación.
+  La IA es la que orquesta la edición y escribe los títulos, descripciones y hashtags de cada red. Es independiente de Vídeos PRO: lo que cambies allí no cambia esto.
+  Gasta <b>1 petición</b> al mejor Flash por Short (de las 20 al día de cada modelo; si se agotan, sigue con los Flash-Lite) y nada más: Whisper y el montaje corren en tu PC.</p>
+
+<section class="card" style="margin-bottom:16px">
+  <div class="fuente-tabs" style="margin-bottom:12px" role="tablist">
+    <button type="button" id="stt-t-subir" class="on" onclick="sttTab('subir')">⬆ Subir un vídeo</button>
+    <button type="button" id="stt-t-video" onclick="sttTab('video')">📤 De un vídeo mío (sus Shorts)</button>
+  </div>
+  <div id="stt-p-subir">
+    <label class="mini-lbl" for="stt-archivo">El vídeo (mp4, mkv, mov, webm…): pantalla + cámara como lo grabas, o ya vertical</label>
+    <input type="file" id="stt-archivo" accept="video/*,.mkv" style="display:block;margin:6px 0 10px">
+    <label class="mini-lbl" for="stt-canal">Canal (su marca, su cámara y su tono)</label>
+    <select id="stt-canal" style="font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff;min-width:240px"></select>
+    <div style="margin-top:12px"><button type="button" class="btn lg" id="stt-crear" onclick="sttSubir()">🎬 Crear el Short</button></div>
+  </div>
+  <div id="stt-p-video" style="display:none">
+    <p class="muted" style="font-size:13px;margin:0 0 8px">Los Shorts que ya salieron de tus vídeos horizontales. Al «enviarlo» se toma <b>ese trozo de la grabación original</b> (no el vertical ya montado) y se vuelve a editar con todo esto.</p>
+    <div id="stt-fuentes" class="muted">Cargando…</div>
+  </div>
+  <div id="stt-msg" class="muted" style="margin-top:8px;font-size:13px" aria-live="polite"></div>
+</section>
+
+<div id="stt-estado"></div>
+<div id="stt-lista"></div>
+
+<style>
+.stt-card{display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:start}
+@media (max-width:760px){.stt-card{grid-template-columns:1fr}}
+.stt-card video{width:100%;max-width:280px;aspect-ratio:9/16;background:#000;border:2px solid var(--ink);border-radius:12px;display:block}
+.stt-fila{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border:2px solid var(--ink);border-radius:10px;background:#fff;margin-bottom:6px;flex-wrap:wrap}
+.stt-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.stt-chip{font-size:12px;border:2px solid var(--ink);border-radius:999px;padding:2px 9px;background:var(--card-2)}
+</style>
+<script src="{{ url_for('static', filename='proinfo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='shorts_tt.js') }}?v={{ ui_v }}"></script>
+<script>sttInicio();</script>
+{% endblock %}

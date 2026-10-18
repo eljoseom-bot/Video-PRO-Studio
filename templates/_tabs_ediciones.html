@@ -1,0 +1,10 @@
+{# Pestañas de «Ediciones»: la misma tira en todas las páginas. `activa` = resumen | escenas | tarjetas | imagenes | suscribete | like | ilustraciones #}
+<nav class="subtabs" aria-label="Qué edita el panel">
+  <a href="{{ url_for('ediciones_page') }}" class="{{ 'on' if activa == 'resumen' }}">Resumen</a>
+  <a href="{{ url_for('ediciones_seccion', seccion='escenas') }}" class="{{ 'on' if activa == 'escenas' }}">🎬 Cambios de escena</a>
+  <a href="{{ url_for('ediciones_seccion', seccion='tarjetas') }}" class="{{ 'on' if activa == 'tarjetas' }}">🏷️ Tarjetas</a>
+  <a href="{{ url_for('ediciones_seccion', seccion='imagenes') }}" class="{{ 'on' if activa == 'imagenes' }}">🖼️ Imágenes</a>
+  <a href="{{ url_for('ediciones_seccion', seccion='suscribete') }}" class="{{ 'on' if activa == 'suscribete' }}">🔔 Suscríbete</a>
+  <a href="{{ url_for('ediciones_seccion', seccion='like') }}" class="{{ 'on' if activa == 'like' }}">👍 Dale like</a>
+  <a href="{{ url_for('ilustraciones_page') }}" class="{{ 'on' if activa == 'ilustraciones' }}">✨ Ilustraciones</a>
+</nav>

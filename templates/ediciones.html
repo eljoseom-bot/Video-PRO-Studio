@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Ediciones{% endblock %}
+{% block body %}
+<h1>Qué edita el panel por ti</h1>
+<p class="sub">En cada vídeo, el director de IA decide <b>qué se corta, qué se ve y qué aparece en pantalla</b>. Estos son los tipos de
+  edición que se ven; entra en cada uno para ver ejemplos animados de cuándo se usa y cómo queda.</p>
+
+{% include "_tabs_ediciones.html" %}
+
+<div class="tiles">
+  <a class="tile" href="{{ url_for('ediciones_seccion', seccion='escenas') }}">
+    <img src="{{ url_for('ediciones_previa', clave='escena_cara') }}" alt="Cambio de escena a tu cara" loading="lazy">
+    <div class="tile-t"><b>🎬 Cambios de escena</b>
+      <span>Alterna tu pantalla, tu cara, un zoom o una tarjeta de explicación, según lo que dices. Corte seco con un «whoosh» suave, y a veces un acercamiento lento.</span></div>
+  </a>
+  <a class="tile" href="{{ url_for('ediciones_seccion', seccion='tarjetas') }}">
+    <img src="{{ url_for('ediciones_previa', clave='tarjeta_herramienta') }}" alt="Tarjeta de herramienta" loading="lazy">
+    <div class="tile-t"><b>🏷️ Tarjetas</b>
+      <span>En vez de subtítulos: puntos, herramientas, definiciones y cifras, abajo a la izquierda.</span></div>
+  </a>
+  <a class="tile" href="{{ url_for('ediciones_seccion', seccion='imagenes') }}">
+    <img src="{{ url_for('ediciones_previa', clave='imagen_ilustrativa') }}" alt="Imagen ilustrativa" loading="lazy">
+    <div class="tile-t"><b>🖼️ Imágenes</b>
+      <span>Una foto real (de Openverse, libre de derechos) arriba a la derecha, cuando haces una analogía.</span></div>
+  </a>
+  <a class="tile" href="{{ url_for('ediciones_seccion', seccion='suscribete') }}">
+    <img src="{{ url_for('ediciones_previa', clave='suscribete_60') }}" alt="Tarjeta de suscríbete" loading="lazy">
+    <div class="tile-t"><b>🔔 Suscríbete</b>
+      <span>Una fija al 60 % del vídeo y otra cada vez que lo dices tú (máximo 3).</span></div>
+  </a>
+  <a class="tile" href="{{ url_for('ediciones_seccion', seccion='like') }}">
+    <img src="{{ url_for('ediciones_previa', clave='like_80') }}" alt="Tarjeta de dale like" loading="lazy">
+    <div class="tile-t"><b>👍 Dale like</b>
+      <span>Una fija al 80 % del vídeo, en todos los vídeos, sin que la pidas.</span></div>
+  </a>
+  <a class="tile" href="{{ url_for('ilustraciones_page') }}">
+    <img src="{{ url_for('ilustraciones_previa', clave='robot') }}" alt="Ilustración animada de un robot" loading="lazy" class="tile-ilu">
+    <div class="tile-t"><b>✨ Ilustraciones</b>
+      <span>32 símbolos con movimiento que refuerzan lo que explicas cuando es muy visual.</span></div>
+  </a>
+</div>
+
+<h2>Y además, en cada vídeo</h2>
+<div class="tambien">
+  <div class="card flat"><b>✂️ Recortes</b><p>Quita relleno, muletillas, silencios largos y tomas repetidas (nunca más de la mitad del vídeo),
+    con un micro-fundido en el empalme para que no se oiga ningún clic.</p></div>
+  <div class="card flat"><b>🎵 Música y sonidos</b><p>Música de tu librería, muy por debajo de tu voz, que sube y baja despacio.
+    Los «whoosh» y los tonos suaves de las tarjetas se calibran contra tu voz.</p></div>
+  <div class="card flat"><b>📝 Título, miniatura y descripción</b><p>Tres títulos para elegir, ideas de miniatura con los colores de tu marca,
+    capítulos y una descripción con tus enlaces, redes y artículo relacionado.</p></div>
+</div>
+<p class="hint">Todos los ejemplos son una grabación de muestra <b>dibujada</b> (no un vídeo tuyo) con exactamente los mismos recortes,
+  tarjetas y fundidos que aplica el render de verdad.</p>
+{% endblock %}

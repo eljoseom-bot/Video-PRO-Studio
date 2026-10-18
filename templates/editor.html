@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% block title %}Editar — {{ job.nombre or job.label or job.jid }}{% endblock %}
+{% block body %}
+<style>
+:root{ --ancho:1340px }
+.ed-top{ display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:16px; align-items:start }
+@media (max-width:1000px){ .ed-top{ grid-template-columns:1fr } }
+.ed-video video{ width:100%; aspect-ratio:16/9; display:block; background:#000; border-radius:10px }
+.ed-ctl{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:8px }
+.ed-ctl .btn{ padding:6px 11px; font-size:13px }
+.ed-time{ font:600 14px ui-monospace,Consolas,monospace; margin:0 8px; white-space:nowrap }
+.ed-time span{ color:var(--dim); font-weight:400 }
+.ed-ctl select{ width:auto; padding:5px 8px; font-size:12px }
+.ed-ctl input[type=range]{ width:84px; accent-color:var(--ok) }
+.ed-hint{ font-size:11.5px; color:var(--dim); margin:8px 0 0; line-height:1.6 }
+.ed-hint kbd{ background:var(--hover); border:1px solid var(--line); border-radius:4px; padding:0 5px;
+  font:11px ui-monospace,Consolas,monospace; color:var(--fg) }
+
+/* ---- línea de tiempo ---- */
+.tl-tools{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px }
+.tl-tools .btn{ padding:4px 10px; font-size:12px }
+.tl-tools .sp{ flex:1 }
+#tl-view{ position:relative; user-select:none; touch-action:none; cursor:crosshair }
+#tl-regla{ position:relative; height:24px; border-bottom:2px solid var(--ink); overflow:hidden }
+#tl-regla .tk{ position:absolute; bottom:0; width:1px; height:6px; background:#A99B8E }
+#tl-regla .tk.M{ height:12px; background:var(--dim) }
+#tl-regla .tl{ position:absolute; top:1px; transform:translateX(3px); font:600 10.5px ui-monospace,Consolas,monospace; color:var(--dim) }
+#tl-lane{ position:relative; height:84px; background:
+  repeating-linear-gradient(90deg,#15151a 0 40px,#181820 40px 80px); border-radius:0 0 8px 8px; overflow:hidden }
+.tl-ev{ position:absolute; bottom:0; width:3px; height:15px; border-radius:2px 2px 0 0; transform:translateX(-1px) }
+.tl-ev.camara{ background:#b48cff } .tl-ev.tarjeta{ background:#ffb020 } .tl-ev.suscribete{ background:#ff5d5d } .tl-ev.ilustracion{ background:#3ed2c4 }
+.tl-ev.palabra{ background:#FFFBF2 } .tl-ev.escena{ background:#FE330A; width:6px }
+.tl-cut{ position:absolute; top:0; bottom:0; background:repeating-linear-gradient(45deg,rgba(255,77,79,.5) 0 7px,rgba(255,77,79,.28) 7px 14px);
+  border-left:2px solid #ff4d4f; border-right:2px solid #ff4d4f; cursor:pointer }
+.tl-cut b{ position:absolute; top:3px; left:4px; font:700 10px var(--font); color:#fff; text-shadow:0 1px 2px #000; pointer-events:none }
+#tl-sel{ position:absolute; top:0; bottom:0; background:rgba(245,166,35,.30); border-top:2px solid var(--warn); border-bottom:2px solid var(--warn); display:none }
+#tl-sel .h{ position:absolute; top:-2px; bottom:-2px; width:14px; background:var(--warn); border-radius:4px; cursor:ew-resize; z-index:3 }
+#tl-sel .h::after{ content:""; position:absolute; top:34%; bottom:34%; left:5px; right:5px; border-left:1px solid #5a3b00; border-right:1px solid #5a3b00 }
+#tl-sel .h b{ position:absolute; top:-17px; left:50%; transform:translateX(-50%); font:800 11px var(--font); color:var(--warn) }
+#hA{ left:-7px } #hB{ right:-7px }
+#tl-head{ position:absolute; top:0; bottom:0; width:2px; background:#fff; z-index:4; pointer-events:none; box-shadow:0 0 0 1px rgba(0,0,0,.4) }
+#tl-head::before{ content:""; position:absolute; top:-1px; left:-5px; border:6px solid transparent; border-top-color:#fff; border-bottom:0 }
+#tl-over{ position:relative; height:22px; margin-top:8px; background:var(--field); border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:none; user-select:none }
+#tl-over .oc{ position:absolute; top:0; bottom:0; background:#ff4d4f; opacity:.85 }
+#tl-over .os{ position:absolute; top:0; bottom:0; background:var(--warn); opacity:.7 }
+#tl-over .oh{ position:absolute; top:0; bottom:0; width:2px; background:#fff }
+#tl-over .ow{ position:absolute; top:-1px; bottom:-1px; border:2px solid var(--link); background:rgba(124,196,255,.12); border-radius:4px }
+.tl-leyenda{ display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--dim); margin-top:8px }
+.tl-leyenda i{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px }
+
+/* ---- panel derecho ---- */
+.ed-card h3{ margin:0 0 10px; font-size:14px }
+.ed-fila{ display:grid; grid-template-columns:22px 1fr auto; gap:6px; align-items:center; margin-bottom:8px }
+.ed-fila .et{ font-weight:800; color:var(--warn) }
+.ed-fila input{ font:600 14px ui-monospace,Consolas,monospace; padding:7px 9px }
+.ed-fila input.mal{ outline:2px solid #ff4d4f; background:var(--bad-bg) }
+.ed-mini{ display:flex; gap:4px }
+.ed-mini .btn{ padding:5px 8px; font-size:12px }
+.ed-botones{ display:flex; flex-direction:column; gap:7px; margin-top:10px }
+.ed-botones .btn{ text-align:left }
+.ed-info{ font-size:12.5px; color:var(--dim); margin:2px 0 0 }
+.ed-info b{ color:var(--fg) }
+.ed-msg{ min-height:18px; font-size:12.5px; margin-top:8px; color:var(--warn) }
+.ed-msg.ok{ color:var(--ok) } .ed-msg.err{ color:var(--bad) }
+#ed-lista{ display:flex; flex-direction:column; gap:6px; margin:6px 0 10px; max-height:260px; overflow:auto }
+.ed-corte{ display:flex; align-items:center; gap:6px; background:var(--field); border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:12.5px }
+.ed-corte .n{ font-weight:800; color:var(--bad); width:18px }
+.ed-corte .t{ flex:1; font:600 12.5px ui-monospace,Consolas,monospace }
+.ed-corte .t span{ color:var(--dim); font-weight:400 }
+.ed-corte .btn{ padding:3px 7px; font-size:11px }
+.ed-vacio{ font-size:12.5px; color:var(--dim); padding:6px 2px }
+.ed-total{ font-size:12.5px; margin:4px 0 8px }
+.ed-total b{ color:var(--bad) }
+.chk{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg); margin:6px 0; cursor:pointer }
+.chk input{ width:auto; accent-color:var(--ok) }
+#btn-aplicar{ width:100%; padding:12px; font-size:14px }
+</style>
+
+<p><a href="{{ url_for('job_page', jid=job.jid) }}">&larr; Volver al vídeo</a></p>
+<h1>✂️ Editor de cortes <span class="muted" style="font-weight:400;font-size:14px">
+  · {{ job.nombre or job.label or job.jid }}</span></h1>
+
+{% if error %}
+<div class="avisobox err" style="margin-top:14px">
+  <b>No se puede abrir el editor</b>
+  <p>{{ error }}</p>
+  <a class="btn ghost sm" href="{{ url_for('job_page', jid=job.jid) }}">Volver</a>
+</div>
+{% else %}
+<p class="sub">Marca un <b>inicio (A)</b> y un <b>fin (B)</b> sobre la línea de tiempo, revisa qué se va a quitar y añádelo a la lista.
+  Al aplicar, se crea una <b>versión nueva</b> del vídeo (la actual no se toca) y se vuelve a renderizar
+  con esos tramos fuera — con el mismo efecto de sonido de los cortes automáticos.</p>
+
+<div class="ed-top">
+  <div class="ed-video">
+    <video id="ed-video" src="{{ datos.url }}" poster="{{ datos.poster }}" preload="auto" playsinline></video>
+    <div class="ed-ctl">
+      <button class="btn ghost" id="c-atras5" title="Retroceder 5 s (Alt + ←)">⏪ 5s</button>
+      <button class="btn ghost" id="c-fm" title="1 frame atrás (←)">◀ frame</button>
+      <button class="btn" id="c-play" title="Reproducir / pausa (Espacio)" style="min-width:92px">▶ Play</button>
+      <button class="btn ghost" id="c-fp" title="1 frame adelante (→)">frame ▶</button>
+      <button class="btn ghost" id="c-adel5" title="Adelantar 5 s (Alt + →)">5s ⏩</button>
+      <span class="ed-time" id="ed-time">0:00.000 <span>/ 0:00.000</span></span>
+      <select id="c-vel" title="Velocidad">
+        <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+        <option value="1.5">1.5×</option><option value="2">2×</option></select>
+      <button class="btn ghost" id="c-mute" title="Silenciar">🔊</button>
+      <input type="range" id="c-vol" min="0" max="1" step="0.05" value="1" title="Volumen">
+    </div>
+    <p class="ed-hint">
+      <kbd>Espacio</kbd> play/pausa · <kbd>←</kbd><kbd>→</kbd> 1 frame (<kbd>Shift</kbd> 1 s · <kbd>Alt</kbd> 5 s) ·
+      <kbd>I</kbd> marca el inicio · <kbd>O</kbd> marca el fin · <kbd>Enter</kbd> añade el corte ·
+      <kbd>Ctrl</kbd>+rueda = zoom · <kbd>Shift</kbd>+rueda = desplazar · <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer</p>
+  </div>
+
+  <div>
+    <div class="card ed-card">
+      <h3>Corte actual</h3>
+      <div class="ed-fila"><span class="et">A</span>
+        <input type="text" id="in-a" placeholder="inicio  m:ss.mmm" autocomplete="off" spellcheck="false">
+        <div class="ed-mini"><button class="btn ghost" id="a-menos" title="1 frame antes">‹</button>
+          <button class="btn ghost" id="a-mas" title="1 frame después">›</button>
+          <button class="btn ghost" id="a-ir" title="Ir a este punto">ir</button></div></div>
+      <div class="ed-fila"><span class="et">B</span>
+        <input type="text" id="in-b" placeholder="fin  m:ss.mmm" autocomplete="off" spellcheck="false">
+        <div class="ed-mini"><button class="btn ghost" id="b-menos" title="1 frame antes">‹</button>
+          <button class="btn ghost" id="b-mas" title="1 frame después">›</button>
+          <button class="btn ghost" id="b-ir" title="Ir a este punto">ir</button></div></div>
+      <p class="ed-info" id="sel-info">Sin selección. Pausa donde empieza lo que sobra y pulsa «Marcar inicio».</p>
+      <div class="ed-botones">
+        <button class="btn ghost" id="b-marca-a">📍 Marcar INICIO (A) aquí <span class="muted">· I</span></button>
+        <button class="btn ghost" id="b-marca-b">📍 Marcar FIN (B) aquí <span class="muted">· O</span></button>
+        <button class="btn ghost" id="b-ver">▶ Ver lo que se corta <span class="muted">(de A a B)</span></button>
+        <button class="btn ghost" id="b-resultado">▶ Ver cómo queda <span class="muted">(salta de A a B)</span></button>
+        <button class="btn" id="b-aniade">✂️ Añadir este corte a la lista <span style="opacity:.8">· Enter</span></button>
+        <button class="btn ghost" id="b-limpia" style="font-size:12px;padding:6px 10px">Quitar la selección</button>
+      </div>
+      <div class="ed-msg" id="ed-msg"></div>
+    </div>
+
+    <div class="card ed-card">
+      <h3>Cortes a aplicar <span class="muted" id="n-cortes"></span></h3>
+      <div id="ed-lista"></div>
+      <div class="ed-total" id="ed-total"></div>
+      <label class="chk"><input type="checkbox" id="chk-saltar" checked>
+        Al reproducir, saltar los cortes de la lista (para ver cómo queda)</label>
+      <button id="btn-aplicar" disabled>✂️ Aplicar cortes y crear versión nueva</button>
+      <p class="ed-info" style="margin-top:8px">Vuelve a renderizar todo el vídeo (varios minutos). No llama a Gemini.
+        La versión actual queda intacta.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="tl-tools">
+    <b style="font-size:13px">Línea de tiempo</b>
+    <span class="sp"></span>
+    <button class="btn ghost" id="z-menos" title="Alejar (Ctrl + rueda)">－</button>
+    <button class="btn ghost" id="z-mas" title="Acercar (Ctrl + rueda)">＋</button>
+    <button class="btn ghost" id="z-todo">Ver todo</button>
+    <button class="btn ghost" id="z-sel">Enfocar selección</button>
+  </div>
+  <div id="tl-view">
+    <div id="tl-regla"></div>
+    <div id="tl-lane">
+      <div id="tl-cuts"></div>
+      <div id="tl-evs"></div>
+      <div id="tl-sel"><div class="h" id="hA"><b>A</b></div><div class="h" id="hB"><b>B</b></div></div>
+      <div id="tl-head"></div>
+    </div>
+  </div>
+  <div id="tl-over" title="Vista general: arrastra el recuadro para moverte"></div>
+  <div class="tl-leyenda">
+    <span><i style="background:#ffffff"></i>posición del vídeo</span>
+    <span><i style="background:var(--warn)"></i>selección A–B</span>
+    <span><i style="background:#ff4d4f"></i>cortes de la lista</span>
+    <span><i style="background:#b48cff"></i>cambio de cámara</span>
+    <span><i style="background:#ffb020"></i>tarjeta</span>
+    <span><i style="background:#ff5d5d"></i>suscríbete</span>
+    <span><i style="background:#3ed2c4"></i>ilustración</span>
+    <span class="muted">Arrastra sobre la línea para seleccionar · clic para moverte · doble clic en un corte para editarlo</span>
+  </div>
+</div>
+
+<script>
+const D = {{ datos|tojson }};
+const $ = id => document.getElementById(id);
+const video = $('ed-video'), lane = $('tl-lane'), vista_el = $('tl-view'), regla = $('tl-regla'), over = $('tl-over');
+const fps = D.fps || 60, frame = 1 / fps, EPS = frame * 0.05;
+let dur = D.duracion || 0;
+let A = null, B = null;               // selección actual (segundos del vídeo FINAL)
+let cortes = [];                      // [{a,b}] ordenados y sin solaparse
+let vista = { ini: 0, fin: dur };     // ventana visible de la línea de tiempo (zoom)
+let preview = null, arrastre = null, aplicando = false, ultimoT = -1;
+const historial = [];
+const KEY = 'edcortes:' + D.jid;
+
+/* ------------------------------------------------------------ utilidades */
+const clamp = (t, lo, hi) => Math.max(lo, Math.min(hi, t));
+const snap = t => Math.round(t * fps) / fps;
+function fmt(t, dec = 3) {
+  const ms = Math.round(Math.max(0, t) * 1000);
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
+  const s = Math.floor(ms % 60000 / 1000), r = ms % 1000;
+  const dd = dec ? '.' + String(r).padStart(3, '0').slice(0, dec) : '';
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0') + dd;
+}
+function parseT(x) {
+  x = String(x).trim().replace(',', '.');
+  if (!x) return NaN;
+  const p = x.split(':');
+  if (p.length > 3) return NaN;
+  let s = 0;
+  for (const q of p) { if (!/^\d+(\.\d+)?$/.test(q)) return NaN; s = s * 60 + parseFloat(q); }
+  return s;
+}
+let msgTimer = 0;
+function msg(txt, tipo = '') {
+  const el = $('ed-msg'); el.textContent = txt; el.className = 'ed-msg ' + tipo;
+  clearTimeout(msgTimer); if (txt) msgTimer = setTimeout(() => { el.textContent = ''; }, 6000);
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ------------------------------------------------------------ vídeo */
+function seek(t) {
+  if (!isFinite(t)) return;               // nunca mandar NaN al vídeo (rompe con una excepción)
+  video.currentTime = clamp(snap(t) + EPS, 0, Math.max(0, dur - frame));
+}
+function paso(n) { video.pause(); seek(snap(video.currentTime) + n * frame); }
+function playPause() {
+  if (video.paused) { preview = null; video.play(); } else { video.pause(); preview = null; }
+}
+function pintaPlay() { $('c-play').textContent = video.paused ? '▶ Play' : '⏸ Pausa'; }
+
+/* ------------------------------------------------------------ persistencia + deshacer */
+function guarda() { try { localStorage.setItem(KEY, JSON.stringify(cortes)); } catch (e) {} }
+function apila() { historial.push(JSON.stringify(cortes)); if (historial.length > 30) historial.shift(); }
+function deshacer() {
+  if (!historial.length) { msg('No hay nada que deshacer.'); return; }
+  cortes = JSON.parse(historial.pop()); guarda(); repinta(); msg('Deshecho.', 'ok');
+}
+
+/* ------------------------------------------------------------ selección A/B */
+function selValida() { return A != null && B != null && B > A + frame / 2; }
+function ponA(t) {
+  t = snap(clamp(t, 0, dur));
+  if (B != null && t >= B) { msg('El inicio tiene que ir ANTES del fin.', 'err'); return false; }
+  A = t; pintaSel(); return true;
+}
+function ponB(t) {
+  t = snap(clamp(t, 0, dur));
+  if (A != null && t <= A) { msg('El fin tiene que ir DESPUÉS del inicio.', 'err'); return false; }
+  B = t; pintaSel(); return true;
+}
+function limpiaSel() { A = B = null; pintaSel(); }
+function pintaSel() {
+  $('in-a').value = A != null ? fmt(A) : '';
+  $('in-b').value = B != null ? fmt(B) : '';
+  $('in-a').classList.remove('mal'); $('in-b').classList.remove('mal');
+  const info = $('sel-info');
+  if (selValida()) info.innerHTML = `Se quitarían <b>${(B - A).toFixed(2)} s</b> (de ${fmt(A, 2)} a ${fmt(B, 2)}).`;
+  else if (A != null) info.textContent = 'Inicio marcado. Ahora busca dónde termina lo que sobra y marca el fin.';
+  else if (B != null) info.textContent = 'Fin marcado. Ahora marca el inicio.';
+  else info.textContent = 'Sin selección. Pausa donde empieza lo que sobra y pulsa «Marcar inicio».';
+  pintaMarcas(); pintaOver();
+}
+function leeInput(inp, cual) {
+  const t = parseT(inp.value);
+  if (isNaN(t) || t < 0 || t > dur + 0.001) {
+    inp.classList.add('mal'); msg(`«${inp.value}» no es un tiempo válido (usa m:ss.mmm, por ejemplo 3:25.4).`, 'err'); return;
+  }
+  const ok = cual === 'A' ? ponA(t) : ponB(t);
+  if (!ok) { inp.classList.add('mal'); return; }
+  seek(cual === 'A' ? A : B);
+}
+
+/* ------------------------------------------------------------ lista de cortes */
+function fusiona() {
+  cortes.sort((x, y) => x.a - y.a);
+  const out = [];
+  for (const c of cortes) {
+    if (out.length && c.a <= out[out.length - 1].b + frame) out[out.length - 1].b = Math.max(out[out.length - 1].b, c.b);
+    else out.push({ a: c.a, b: c.b });
+  }
+  cortes = out;
+}
+function aniade() {
+  if (!selValida()) { msg('Marca primero un inicio (A) y un fin (B) válidos.', 'err'); return; }
+  if (B - A < 0.1) { msg('El corte es demasiado corto (mínimo 0.1 s).', 'err'); return; }
+  apila(); cortes.push({ a: A, b: B }); fusiona(); guarda(); limpiaSel(); repinta();
+  msg(`Corte añadido. Llevas ${cortes.length}.`, 'ok');
+}
+function quita(i) { apila(); cortes.splice(i, 1); guarda(); repinta(); }
+function edita(i) {                          // devuelve el corte a A/B para ajustarlo
+  const c = cortes[i]; if (!c) return;
+  apila(); cortes.splice(i, 1); guarda(); A = c.a; B = c.b; repinta(); pintaSel(); seek(A);
+  msg('Corte cargado en A/B: ajústalo y vuelve a añadirlo.', 'ok');
+}
+const totalCortes = () => cortes.reduce((s, c) => s + (c.b - c.a), 0);
+function pintaLista() {
+  $('n-cortes').textContent = cortes.length ? `(${cortes.length})` : '';
+  $('ed-lista').innerHTML = cortes.length ? cortes.map((c, i) => `
+    <div class="ed-corte"><span class="n">${i + 1}</span>
+      <span class="t">${fmt(c.a, 2)} → ${fmt(c.b, 2)} <span>· ${(c.b - c.a).toFixed(2)} s</span></span>
+      <button class="btn ghost" data-ver="${i}" title="Ver el tramo">▶</button>
+      <button class="btn ghost" data-edita="${i}" title="Ajustar este corte">✎</button>
+      <button class="btn ghost" data-quita="${i}" title="Quitar de la lista">✕</button></div>`).join('')
+    : '<div class="ed-vacio">Todavía no hay cortes. Selecciona un tramo y añádelo.</div>';
+  const t = totalCortes();
+  $('ed-total').innerHTML = cortes.length
+    ? `Se quitan <b>${t.toFixed(1)} s</b> · el vídeo pasará de <b>${fmt(dur, 1)}</b> a <b>${fmt(dur - t, 1)}</b>` : '';
+  $('btn-aplicar').disabled = !cortes.length || aplicando;
+}
+$('ed-lista').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.quita != null) quita(+b.dataset.quita);
+  else if (b.dataset.edita != null) edita(+b.dataset.edita);
+  else if (b.dataset.ver != null) { const c = cortes[+b.dataset.ver]; preview = { tipo: 'ver', a: c.a, b: c.b }; seek(c.a); video.play(); }
+});
+
+/* ------------------------------------------------------------ línea de tiempo */
+const span = () => Math.max(0.5, vista.fin - vista.ini);
+const pct = t => (t - vista.ini) / span() * 100;
+function setVista(ini, fin) {
+  let sp = clamp(fin - ini, Math.min(2, dur), dur);
+  ini = clamp(ini, 0, Math.max(0, dur - sp));
+  vista = { ini, fin: ini + sp };
+  pintaRegla(); pintaMarcas(); pintaCabezal(); pintaOver();
+}
+function zoom(factor, centro) {
+  const c = centro != null ? centro : (video.currentTime || 0);
+  const f = (c - vista.ini) / span();
+  const sp = clamp(span() * factor, Math.min(2, dur), dur);
+  setVista(c - f * sp, c - f * sp + sp);
+}
+function pintaRegla() {
+  const w = lane.clientWidth || 800, sp = span(), pxSeg = w / sp;
+  const pasos = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+  const paso = pasos.find(p => p * pxSeg >= 90) || 3600, menor = paso / 5;
+  let html = '';
+  for (let i = Math.ceil(vista.ini / menor - 1e-9); i * menor <= vista.fin + 1e-9; i++) {
+    const t = i * menor, x = (t - vista.ini) / sp * 100;
+    const mayor = i % 5 === 0;
+    html += `<i class="tk ${mayor ? 'M' : ''}" style="left:${x}%"></i>`;
+    if (mayor) html += `<b class="tl" style="left:${x}%">${fmt(t, paso < 1 ? 2 : (paso < 5 ? 1 : 0))}</b>`;
+  }
+  regla.innerHTML = html;
+}
+function pintaMarcas() {
+  // cortes de la lista
+  $('tl-cuts').innerHTML = cortes.map((c, i) => {
+    if (c.b < vista.ini || c.a > vista.fin) return '';
+    const l = Math.max(0, pct(c.a)), r = Math.min(100, pct(c.b));
+    return `<div class="tl-cut" data-i="${i}" style="left:${l}%;width:${Math.max(0.2, r - l)}%" title="Corte ${i + 1}: ${fmt(c.a, 2)} → ${fmt(c.b, 2)} (doble clic para editar)"><b>${i + 1}</b></div>`;
+  }).join('');
+  // eventos (cambios de cámara / tarjetas)
+  $('tl-evs').innerHTML = (D.eventos || []).map(e => {
+    const t = +e.t; if (isNaN(t) || t < vista.ini || t > vista.fin) return '';
+    const tipo = e.tipo === 'camara' ? 'camara' : String(e.tipo || '').startsWith('ilustracion:') ? 'ilustracion'
+      : String(e.tipo || '').startsWith('tarjeta:suscribete') ? 'suscribete' : e.tipo === 'palabra' ? 'palabra'
+      : String(e.tipo || '').startsWith('escena:') ? 'escena' : 'tarjeta';
+    return `<i class="tl-ev ${tipo}" style="left:${pct(t)}%" title="${fmt(t, 1)} · ${esc(e.detalle || e.tipo || '')}"></i>`;
+  }).join('');
+  // selección A/B
+  const sel = $('tl-sel');
+  if (A == null && B == null) { sel.style.display = 'none'; return; }
+  const a = A != null ? A : B, b = B != null ? B : A;
+  sel.style.display = 'block';       // el CSS lo trae oculto por defecto; '' lo dejaría oculto
+  sel.style.left = pct(a) + '%';
+  sel.style.width = Math.max(0, pct(b) - pct(a)) + '%';
+  $('hA').style.display = A != null ? '' : 'none';
+  $('hB').style.display = B != null ? '' : 'none';
+}
+function pintaCabezal() {
+  const t = video.currentTime || 0, x = pct(t);
+  $('tl-head').style.display = (x < -0.5 || x > 100.5) ? 'none' : '';
+  $('tl-head').style.left = `calc(${x}% - 1px)`;
+  const tt = fmt(t) ;
+  if (t !== ultimoT) {
+    ultimoT = t;
+    $('ed-time').innerHTML = `${tt} <span>/ ${fmt(dur)}</span>`;
+  }
+}
+function pintaOver() {
+  if (!dur) { over.innerHTML = ''; return; }
+  const p = t => (t / dur * 100);
+  let h = cortes.map(c => `<div class="oc" style="left:${p(c.a)}%;width:${Math.max(0.3, p(c.b - c.a))}%"></div>`).join('');
+  if (A != null || B != null) {
+    const a = A != null ? A : B, b = B != null ? B : A;
+    h += `<div class="os" style="left:${p(a)}%;width:${Math.max(0.3, p(b - a))}%"></div>`;
+  }
+  h += `<div class="ow" style="left:${p(vista.ini)}%;width:${p(vista.fin - vista.ini)}%"></div>`;
+  h += `<div class="oh" id="oh" style="left:${p(video.currentTime || 0)}%"></div>`;
+  over.innerHTML = h;
+}
+function repinta() { pintaRegla(); pintaMarcas(); pintaCabezal(); pintaOver(); pintaLista(); pintaSel_solo(); }
+function pintaSel_solo() { /* la selección ya se refleja en pintaMarcas/pintaOver */ }
+
+/* --- interacción con la línea de tiempo (ratón / dedo) --- */
+function tAt(clientX) {
+  const r = lane.getBoundingClientRect();
+  if (!r.width) return vista.ini;         // línea sin ancho (pestaña oculta): no dividir por cero
+  return clamp(vista.ini + (clientX - r.left) / r.width * span(), 0, dur);
+}
+function capt(el, e) { try { el.setPointerCapture(e.pointerId); } catch (_) {} }
+// Mover el vídeo mientras se arrastra: el primer salto es inmediato y luego, como
+// mucho, uno cada 45 ms con el último valor (no depende de requestAnimationFrame,
+// que el navegador congela en una pestaña en segundo plano).
+let tScrub = null, scrubTimer = 0;
+function scrub(t) {
+  tScrub = t;
+  if (scrubTimer) return;
+  seek(t);
+  scrubTimer = setTimeout(() => { scrubTimer = 0; if (tScrub !== t) seek(tScrub); }, 45);
+}
+
+vista_el.addEventListener('pointerdown', e => {
+  if (e.button !== undefined && e.button > 0) return;
+  const h = e.target.closest('.h');
+  if (h) { arrastre = { modo: h.id === 'hA' ? 'A' : 'B' }; capt(vista_el, e); e.preventDefault(); return; }
+  const enRegla = e.target.closest('#tl-regla');
+  arrastre = { modo: enRegla ? 'cabezal' : 'nuevo', t0: tAt(e.clientX), x0: e.clientX, movido: false };
+  capt(vista_el, e);
+  if (enRegla) { video.pause(); scrub(arrastre.t0); }
+  e.preventDefault();
+});
+vista_el.addEventListener('pointermove', e => {
+  if (!arrastre) return;
+  const t = tAt(e.clientX);
+  if (arrastre.modo === 'A') { const v = snap(Math.min(t, (B != null ? B : dur) - frame)); A = Math.max(0, v); pintaSel(); scrub(A); }
+  else if (arrastre.modo === 'B') { const v = snap(Math.max(t, (A != null ? A : 0) + frame)); B = Math.min(dur, v); pintaSel(); scrub(B); }
+  else if (arrastre.modo === 'cabezal') { video.pause(); scrub(t); }
+  else {
+    if (!arrastre.movido && Math.abs(e.clientX - arrastre.x0) < 5) return;
+    arrastre.movido = true; video.pause();
+    A = snap(Math.min(arrastre.t0, t)); B = snap(Math.max(arrastre.t0, t)); pintaSel(); scrub(t);
+  }
+});
+function finArrastre(e) {
+  if (!arrastre) return;
+  if (arrastre.modo === 'nuevo' && !arrastre.movido) { video.pause(); preview = null; seek(arrastre.t0); }
+  if (arrastre.modo === 'nuevo' && arrastre.movido && !selValida()) limpiaSel();
+  arrastre = null;
+}
+vista_el.addEventListener('pointerup', finArrastre);
+vista_el.addEventListener('pointercancel', finArrastre);
+// Doble clic sobre un corte de la lista: se recarga en A/B para ajustarlo. Se busca
+// por POSICIÓN y no por e.target: con el puntero capturado (ver pointerdown) el
+// navegador entrega el dblclick al contenedor, no al bloque del corte.
+vista_el.addEventListener('dblclick', e => {
+  const r = lane.getBoundingClientRect();
+  if (!r.width || e.clientY < r.top || e.clientY > r.bottom) return;
+  const tol = 4 / r.width * span(), t = tAt(e.clientX);
+  const i = cortes.findIndex(c => t >= c.a - tol && t <= c.b + tol);
+  if (i >= 0) edita(i);
+});
+vista_el.addEventListener('wheel', e => {
+  if (e.ctrlKey) { e.preventDefault(); zoom(e.deltaY > 0 ? 1.25 : 0.8, tAt(e.clientX)); }
+  else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    e.preventDefault(); const d = (e.deltaX || e.deltaY) / lane.clientWidth * span(); setVista(vista.ini + d, vista.fin + d);
+  }
+}, { passive: false });
+// vista general: clic/arrastre mueve la ventana
+let arrOver = false;
+function moverOver(e) {
+  const r = over.getBoundingClientRect(), t = clamp((e.clientX - r.left) / r.width * dur, 0, dur), sp = span();
+  setVista(t - sp / 2, t + sp / 2);
+}
+over.addEventListener('pointerdown', e => { arrOver = true; capt(over, e); moverOver(e); e.preventDefault(); });
+over.addEventListener('pointermove', e => { if (arrOver) moverOver(e); });
+over.addEventListener('pointerup', () => { arrOver = false; });
+
+/* ------------------------------------------------------------ vista previa */
+function verCorte() {
+  if (!selValida()) { msg('Marca un inicio y un fin para ver ese tramo.', 'err'); return; }
+  preview = { tipo: 'ver', a: A, b: B }; seek(A); video.play();
+}
+function verResultado() {
+  if (!selValida()) { msg('Marca un inicio y un fin para ver cómo queda.', 'err'); return; }
+  preview = { tipo: 'salta', a: A, b: B, despues: 3 }; seek(Math.max(0, A - 3)); video.play();
+  msg('Reproduciendo con el salto de A a B (3 s antes y 3 s después).', 'ok');
+}
+// La lógica de reproducción (saltar cortes, parar la vista previa) corre desde dos
+// sitios: cada frame (requestAnimationFrame, suave) y un temporizador de respaldo,
+// por si el navegador congela los frames con la pestaña en segundo plano.
+function logicaReproduccion() {
+  if (!video.paused && !video.seeking) {
+    const t = video.currentTime;
+    if (preview) {
+      if (preview.tipo === 'ver' && t >= preview.b - 0.002) { video.pause(); seek(preview.b); preview = null; }
+      else if (preview.tipo === 'salta') {
+        if (t >= preview.a - 0.002 && t < preview.b) seek(preview.b);
+        else if (t >= preview.b + preview.despues) { video.pause(); preview = null; }
+      }
+    } else if ($('chk-saltar').checked) {
+      const c = cortes.find(c => t >= c.a - 0.002 && t < c.b - 0.002);
+      if (c) seek(c.b);
+    }
+    // sigue la posición si el zoom la dejó fuera de la ventana
+    if (span() < dur - 0.01 && !arrastre) {
+      const x = pct(t);
+      if (x > 96 || x < 0) { const s = span(); setVista(t - s * 0.1, t - s * 0.1 + s); }
+    }
+  }
+  pintaCabezal();
+  const oh = $('oh'); if (oh && dur) oh.style.left = (video.currentTime / dur * 100) + '%';
+}
+function tick() { logicaReproduccion(); requestAnimationFrame(tick); }
+setInterval(logicaReproduccion, 40);
+
+/* ------------------------------------------------------------ aplicar */
+async function aplicar() {
+  if (!cortes.length || aplicando) return;
+  const t = totalCortes();
+  if (!confirm(`Se creará una versión NUEVA del vídeo sin ${cortes.length} corte(s) (${t.toFixed(1)} s en total).\n\n` +
+      `Vuelve a renderizar todo (varios minutos, sin usar Gemini). La versión actual no se toca.\n\n¿Aplicar?`)) return;
+  aplicando = true; $('btn-aplicar').disabled = true; $('btn-aplicar').textContent = 'Creando la versión…';
+  try {
+    const r = await fetch(`/api/job/${D.jid}/editar`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cortes: cortes.map(c => ({ a: +c.a.toFixed(4), b: +c.b.toFixed(4) })) }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'error desconocido');
+    try { localStorage.removeItem(KEY); } catch (_) {}
+    location.href = `/job/${j.jid}`;
+  } catch (e) {
+    aplicando = false; $('btn-aplicar').textContent = '✂️ Aplicar cortes y crear versión nueva'; pintaLista();
+    msg('No se pudo crear la versión: ' + e.message, 'err');
+  }
+}
+window.addEventListener('beforeunload', e => { if (cortes.length && !aplicando) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ------------------------------------------------------------ eventos de botones / teclado */
+$('c-play').onclick = playPause;
+$('c-fm').onclick = () => paso(-1); $('c-fp').onclick = () => paso(1);
+$('c-atras5').onclick = () => { seek(video.currentTime - 5); };
+$('c-adel5').onclick = () => { seek(video.currentTime + 5); };
+$('c-vel').onchange = e => { video.playbackRate = +e.target.value; };
+$('c-vol').oninput = e => { video.volume = +e.target.value; video.muted = false; $('c-mute').textContent = '🔊'; };
+$('c-mute').onclick = () => { video.muted = !video.muted; $('c-mute').textContent = video.muted ? '🔇' : '🔊'; };
+$('b-marca-a').onclick = () => ponA(video.currentTime);
+$('b-marca-b').onclick = () => ponB(video.currentTime);
+$('b-ver').onclick = verCorte; $('b-resultado').onclick = verResultado;
+$('b-aniade').onclick = aniade; $('b-limpia').onclick = limpiaSel;
+$('btn-aplicar').onclick = aplicar;
+$('in-a').onchange = () => leeInput($('in-a'), 'A'); $('in-b').onchange = () => leeInput($('in-b'), 'B');
+$('a-menos').onclick = () => { if (A != null) { ponA(A - frame); seek(A); } };
+$('a-mas').onclick = () => { if (A != null) { ponA(A + frame); seek(A); } };
+$('b-menos').onclick = () => { if (B != null) { ponB(B - frame); seek(B); } };
+$('b-mas').onclick = () => { if (B != null) { ponB(B + frame); seek(B); } };
+$('a-ir').onclick = () => { if (A != null) seek(A); }; $('b-ir').onclick = () => { if (B != null) seek(B); };
+$('z-mas').onclick = () => zoom(0.5); $('z-menos').onclick = () => zoom(2);
+$('z-todo').onclick = () => setVista(0, dur);
+$('z-sel').onclick = () => {
+  if (!selValida()) { msg('Selecciona un tramo para enfocarlo.'); return; }
+  const m = (B - A) * 0.35 + 1; setVista(A - m, B + m);
+};
+video.addEventListener('play', pintaPlay); video.addEventListener('pause', pintaPlay);
+video.addEventListener('loadedmetadata', () => {
+  if (video.duration && isFinite(video.duration)) { dur = video.duration; if (vista.fin > dur || vista.fin === D.duracion) vista = { ini: 0, fin: dur }; repinta(); }
+});
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'select' || tag === 'textarea') { if (e.key === 'Enter' && tag === 'input') e.target.blur(); return; }
+  const k = e.key.toLowerCase();
+  if (e.key === ' ') { e.preventDefault(); playPause(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault(); const s = e.key === 'ArrowLeft' ? -1 : 1;
+    if (e.altKey) seek(video.currentTime + 5 * s); else if (e.shiftKey) seek(video.currentTime + s); else paso(s);
+  }
+  else if (k === 'i') ponA(video.currentTime);
+  else if (k === 'o') ponB(video.currentTime);
+  else if (e.key === 'Enter') aniade();
+  else if (k === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); deshacer(); }
+});
+window.addEventListener('resize', () => { pintaRegla(); pintaMarcas(); });
+
+/* ------------------------------------------------------------ arranque */
+try {
+  const previos = JSON.parse(localStorage.getItem(KEY) || '[]');
+  if (Array.isArray(previos) && previos.length) {
+    cortes = previos.filter(c => c && c.b > c.a && c.b <= dur + 0.5).map(c => ({ a: +c.a, b: +c.b }));
+    if (cortes.length) msg(`Recuperé ${cortes.length} corte(s) que tenías sin aplicar.`, 'ok');
+  }
+} catch (_) {}
+repinta(); pintaSel(); pintaPlay();
+requestAnimationFrame(tick);
+</script>
+{% endif %}
+{% endblock %}

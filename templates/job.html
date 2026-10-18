@@ -1,0 +1,1237 @@
+{% extends "base.html" %}
+{% block title %}{{ job.nombre or job.label or job.jid }}{% endblock %}
+{% block body %}
+<style>
+/* Un vídeo PRO es SIEMPRE 1 solo resultado — no tiene sentido que comparta
+   fila con nada ni que quede metido en una columna angosta pensada para una
+   galería de varios vídeos del modo "Generador". Ocupa la fila entera.
+   El resto de estilos de esta tarjeta (.pro-ab, .pro-ritmo…) viven en
+   panel.css: los usan esta página Y /video/<base> (versiones.html). */
+.clip.pro-full{ grid-column: 1 / -1; max-width: 1080px }
+/* Tarjeta "Analizado por Gemini" / "NO analizado por Gemini": lo primero que
+   se ve al abrir un vídeo PRO, imposible de confundir. */
+.ia-banner{ display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  margin:12px 0 4px; padding:14px 18px; border-radius:12px; border:2px solid; }
+.ia-banner .ia-ico{ font-size:30px; line-height:1 }
+.ia-banner .ia-tit{ font-size:18px; font-weight:800; letter-spacing:.02em }
+.ia-banner .ia-sub{ font-size:12.5px; opacity:.85; margin-top:3px }
+.ia-banner .ia-cuerpo{ flex:1 1 260px; min-width:0 }
+.ia-banner.ok{ background:var(--ok-bg); border-color:var(--ok); color:var(--ok) }
+.ia-banner.fail{ background:var(--bad-bg); border-color:var(--bad); color:var(--bad); padding:18px 20px }
+.ia-banner.fail .ia-tit{ font-size:22px }
+</style>
+<p><a href="{{ url_for('videos_page') }}">&larr; Panel</a></p>
+<h1 style="word-break:break-all">{{ (job.nombre or job.label or job.jid) }}
+  <span class="badge {{ job.state }}" id="badge">{{ job.state }}</span></h1>
+{% if job.nombre %}<p class="muted" style="margin:-6px 0 8px;font-size:12px">Grabación: {{ job.label }}</p>{% endif %}
+<div id="reauth-slot"></div>
+<div id="ia-banner" class="ia-banner" style="display:none"></div>
+<p class="sub" id="stage">{{ job.stage or '' }}</p>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="bar" style="flex:1"><i id="bar" style="width:{{ job.pct or 3 }}%"></i></div>
+    <span class="sub" id="eta" style="white-space:nowrap;min-width:0"></span>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+    <button class="btn ghost" id="btn-pause" onclick="act('pause')" style="display:none">⏸ Pausar</button>
+    <button class="btn" id="btn-resume" onclick="act('resume')" style="display:none">▶ Reanudar</button>
+    <button class="btn ghost" id="btn-cancel" onclick="act('cancel')">Cancelar</button>
+    <button class="btn ghost" id="btn-retry" onclick="act('retry')" style="display:none">Reintentar</button>
+    <button class="btn ghost" onclick="fetch('/api/job/{{ job.jid }}/abrir-carpeta',{method:'POST'})">Abrir carpeta</button>
+    <button class="btn ghost" id="btn-reshuffle" onclick="reshuffle()" style="display:none"
+            title="Vuelve a mandarle este mismo archivo al director y renderiza una versión aparte (v2, v3...) para comparar">
+      🔀 Reshuffle (nueva versión)</button>
+  </div>
+  <p class="sub" id="pausehint" style="display:none;margin-top:8px">
+    En pausa. Los vídeos renderizados hasta ahora están abajo: puedes marcarlos,
+    descargarlos o programarlos en YouTube. Pulsa <b>Reanudar</b> para seguir generando.
+  </p>
+</div>
+
+<h2>Registro en vivo</h2>
+<pre class="log" id="log"></pre>
+
+<h2>Vídeos</h2>
+<div id="clips-partial" class="sub" style="display:none"></div>
+<div class="seltoolbar" id="seltoolbar" style="display:none">
+  <span class="muted">Marca los que quieres publicar:</span>
+  <button class="btn ghost sm" onclick="pickAll(true)">Todos</button>
+  <button class="btn ghost sm" onclick="pickAll(false)">Ninguno</button>
+  <button class="btn ghost sm" onclick="pickApproved()" title="Los vídeos en verde: ya subidos o programados en YouTube">Solo Aprobados</button>
+  <span style="flex:1"></span>
+  <button class="btn ghost" onclick="gotoYT()">▶ Publicar en YouTube ↓</button>
+  <button class="btn ghost" id="btn-del" disabled onclick="deletePicked()">🗑 Borrar del PC (<span id="ndel">0</span>)</button>
+  <button class="btn" id="btn-dl" disabled onclick="downloadPicked()">⬇ Descargar seleccionados (<span id="nsel">0</span>)</button>
+</div>
+<div class="grid horiz" id="clips"><p class="muted" id="clips-empty">Aún no hay vídeos renderizados.</p></div>
+<div id="shorts-slot"></div>
+<div id="articulo-slot"></div>
+<div id="redes-slot"></div>
+<div id="carrusel-slot"></div>
+
+<h2 id="yth2" style="display:none">Publicar en YouTube</h2>
+<div class="card" id="ytpanel" style="display:none">
+  <div id="yt-conn" class="muted">Comprobando…</div>
+
+  <div id="yt-sched" style="display:none;margin-top:12px">
+    <div id="yt-listas" class="yt-listas" style="display:none">
+      <span class="yt-listas-et" title="Cada vídeo que publiques se añade solo a la lista que elijas, en cuanto se sube (se recuerda para los próximos)">📚 Lista de reproducción</span>
+      <details class="yt-dd" id="yt-dd">
+        <summary id="yt-dd-resumen">Cargando…</summary>
+        <div class="yt-dd-menu" id="yt-listas-chips"></div>
+      </details>
+      <button type="button" class="btn ghost sm yt-dd-ref" onclick="ytListasCarga(true)" title="Vuelve a leer tus listas de YouTube">↻</button>
+      <span id="yt-listas-msg" class="muted yt-listas-msg"></span>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <button class="btn yt" onclick="publishRapido()">⚡ Programar rápido (<span id="yt-nsel-r">0</span>)</button>
+      <button class="btn alt" onclick="toggleManual()" id="btn-manual">📅 Elegir fechas y horas a mano</button>
+    </div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">
+      <b>Rápido</b>: reparte los marcados en tus horas habituales, según
+      <code>videos.publicar</code> de config.yaml — no eliges nada.
+      &nbsp;·&nbsp; <b>A mano</b>: tú pones fecha de inicio, horas y vídeos por día.
+    </div>
+    <div id="yt-manual" style="display:none">
+    <div class="row" style="align-items:flex-end">
+      <div id="ad-batch" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:0 0 auto"><label>vídeos por día</label>
+          <input type="number" id="ad-perday" value="1" min="1" max="3" style="width:70px"
+                 oninput="updatePlan()"></div>
+        <div style="flex:1 1 220px"><label>horas del día (separadas por coma)</label>
+          <input type="text" id="ad-hours" value="18:00" style="width:100%" oninput="updatePlan()">
+          <div class="muted" id="ad-hours-hint" style="font-size:11px"></div></div>
+        <div style="flex:0 0 auto"><label>empezando</label>
+          <input type="date" id="ad-date" style="width:150px" oninput="updatePlan()"></div>
+        <button class="btn ghost sm" onclick="autoFill()">Auto-distribuir fechas</button>
+      </div>
+      <button class="btn ghost" onclick="prepSchedule()">Preparar con seleccionados (<span id="yt-nsel">0</span>)</button>
+    </div>
+    <div class="plan-summary" id="plan-summary">Marca vídeos arriba y pulsa "Preparar".</div>
+    <table class="ytrows" id="yt-rows"></table>
+    <button class="btn yt" id="yt-go" disabled onclick="publish()" style="margin-top:10px">Programar en YouTube</button>
+    </div>
+  </div>
+
+  <div id="yt-status" style="margin-top:12px"></div>
+</div>
+
+<div id="yt-editor" class="overlay" style="display:none">
+  <div class="modal">
+    <h3 class="ttl">Editar</h3>
+    <label>Título</label><input id="ed-title" maxlength="100">
+    <div class="row">
+      <div><label>Fecha</label><input type="date" id="ed-date"></div>
+      <div><label>Hora</label><input type="time" id="ed-time"></div>
+      <div style="flex:2"><label>Tags (coma)</label><input id="ed-tags"></div>
+    </div>
+    <label>Descripción</label><textarea id="ed-desc" rows="4"></textarea>
+    <div style="display:flex;gap:10px;margin-top:12px;justify-content:flex-end">
+      <button class="btn ghost" onclick="document.getElementById('yt-editor').style.display='none'">Cancelar</button>
+      <button class="btn yt" id="ed-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='mejorar.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='proinfo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='muletillas.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='articulo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='redes.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='posts.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='carrusel.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='shorts_pub.js') }}?v={{ ui_v }}"></script>
+<script>
+const JID = {{ job.jid|tojson }};
+
+// «🗣️ Tus muletillas» (static/muletillas.js), justo debajo de «Editar / cortar»: plegado; se carga al abrirlo.
+// La transcripción es la de la grabación, igual para todas las versiones: por eso va por la familia (sin «--pro-vN»).
+async function mulJob(){
+  const el = document.getElementById('mul-job');
+  if(!el) return;
+  const abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : '';
+  if(!abierto && !el.dataset.cargado)
+    el.dataset.cargado = (await muletillasCargaEn(JID.replace(/--pro(-v\d+)?$/, ''), 'mul-job')) ? '1' : '';
+}
+const VIDEOS_URL = {{ url_for('videos_page')|tojson }};
+let terminal = {{ 'true' if job.state in ['done','error','cancelled'] else 'false' }};
+
+// Carga perezosa del vídeo: la tarjeta muestra solo la miniatura (imagen
+// ligera). Al hacer clic se crea el <video> y se reproduce. Así una galería
+// con varios vídeos no cuelga el navegador.
+function playCard(wrap){
+  if(wrap.dataset.loaded) return;
+  wrap.dataset.loaded = '1';
+  const v = document.createElement('video');
+  v.controls = true; v.autoplay = true; v.preload = 'auto';
+  v.playsInline = true; v.src = wrap.dataset.src;
+  wrap.replaceWith(v);
+  const card = v.closest('.clip');
+  if(card) card.classList.add('playing');
+  // pausa los demás para no tener varios vídeos sonando
+  document.querySelectorAll('.clip video').forEach(o => { if(o!==v) o.pause(); });
+}
+
+// Clic en una fila del "ritmo del vídeo" -> salta el reproductor de la
+// izquierda a ese instante exacto (para verificar que el evento de verdad
+// pasa ahí). Si el vídeo aún no se había arrancado (solo el póster), lo
+// arranca primero y salta en cuanto conoce su duración real.
+function seekVideo(el){
+  const t = parseFloat(el.dataset.t || '0');
+  const row = el.closest('.pro-video-row');
+  if(!row) return;
+  let v = row.querySelector('video');
+  if(v){
+    v.currentTime = t;
+    v.play();
+    return;
+  }
+  const wrap = row.querySelector('.vwrap');
+  if(!wrap) return;
+  playCard(wrap);
+  v = row.querySelector('video');
+  if(!v) return;
+  const irAlPunto = () => { v.currentTime = t; };
+  if(v.readyState >= 1) irAlPunto();
+  else v.addEventListener('loadedmetadata', irAlPunto, {once:true});
+}
+
+const STATE_ES = {queued:'en cola', running:'generando', paused:'en pausa',
+                  done:'terminado', error:'error', cancelled:'cancelado'};
+const logEl = document.getElementById('log');
+const es = new EventSource(`/job/${JID}/stream`);
+
+// El registro se pinta POR LOTES, una vez por fotograma (un vídeo largo deja
+// miles de lineas de transcripcion; pintarlas una a una congela el navegador).
+const LOG_TOPE = 2000;
+let LOG_LINEAS = [], _logPend = false;
+
+function pintarLog(){
+  _logPend = false;
+  // respeta al usuario: si se ha subido a leer algo, no le arrastres abajo
+  const pegado = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 60;
+  logEl.textContent = LOG_LINEAS.join("\n");
+  if(pegado) logEl.scrollTop = logEl.scrollHeight;
+}
+
+es.onmessage = e => {
+  const nuevas = String(e.data).split("\n");
+  for(const ln of nuevas) LOG_LINEAS.push(ln);
+  if(LOG_LINEAS.length > LOG_TOPE) LOG_LINEAS.splice(0, LOG_LINEAS.length - LOG_TOPE);
+  // setTimeout y NO requestAnimationFrame: rAF no se ejecuta en una pestaña
+  // de fondo, asi que si dejabas el vídeo en otra pestaña el registro no se
+  // pintaba nunca. Con 50 ms se agrupa igual de bien y funciona siempre.
+  if(!_logPend){ _logPend = true; setTimeout(pintarLog, 50); }
+};
+es.addEventListener('done', () => { es.close(); terminal = true; refresh(); loadClips(); });
+
+// «¿Quieres mejorarle algo?» va justo debajo del vídeo. Los datos (cuántas mejoras quedan, si ya hay otra versión
+// procesándose) se piden frescos al panel: cambian cada vez que se termina una versión.
+async function pintaMejora(){
+  const slot = document.getElementById('mejora-slot');
+  if(!slot || slot.dataset.pintado === '1') return;
+  try{
+    const info = await (await fetch(`/api/job/${JID}/mejoras`)).json();
+    if(!info || !info.base || info.estado !== 'done'){ slot.innerHTML = ''; return; }
+    slot.dataset.pintado = '1';
+    slot.innerHTML = mejoraCardHTML(JID, info)
+      + (info.versiones > 1 ? `<p style="margin:0 0 4px"><a href="/video/${encodeURIComponent(info.base)}">📚 Ver las ${info.versiones} versiones de este vídeo, una debajo de otra →</a></p>` : '');
+  }catch(e){ slot.innerHTML = ''; }
+}
+
+// Tarjeta grande: ¿lo analizó Gemini? ¿con qué modelo? Si NO, botón directo
+// de Reshuffle. Los vídeos anteriores a este aviso no traen el dato: no se
+// enseña nada (no se inventa un veredicto).
+function renderIA(a, enCurso, esMejora){
+  const el = document.getElementById('ia-banner');
+  if(!el || !a){ if(el) el.style.display = 'none'; return; }
+  if(a.ok){
+    const tok = (a.tokens_entrada != null)
+      ? `${Number(a.tokens_entrada).toLocaleString('es')} tokens de entrada · ${Number(a.tokens_salida||0).toLocaleString('es')} de salida` : '';
+    el.className = 'ia-banner ok';
+    el.innerHTML = `<span class="ia-ico">✅</span><div class="ia-cuerpo">
+      <div class="ia-tit">ANALIZADO POR GEMINI · ${esc(a.nombre || 'Gemini')}</div>
+      <div class="ia-sub">${a.principal === false ? 'Modelo de respaldo: el preferido no respondió, se usó el siguiente de la lista. ' : ''}${a.en_cache ? 'Plan guardado de una corrida anterior. ' : ''}${tok}</div>
+      ${a.mejora ? `<div class="ia-sub">✨ <b>Mejorado con tu comentario:</b> «${esc(a.mejora.texto)}»${a.mejora.nota ? ` — <b>la IA:</b> ${esc(a.mejora.nota)}` : ''}</div>` : ''}
+      ${a.mejora && a.mejora.sin_cambios ? `<div class="ia-sub">🤔 <b>La IA no cambió nada</b>, por eso no se creó un vídeo nuevo ni se descontó una mejora. Prueba a explicarlo con otras palabras o con el tiempo exacto.</div>` : ''}
+      ${a.manual ? `<div class="ia-sub">✂️ <b>Editado a mano:</b> ${a.manual.cortes} corte(s) tuyos (${a.manual.segundos} s quitados) sobre ese análisis — sin volver a llamar a Gemini.</div>` : ''}
+      ${a.vision && a.vision.ok ? `<div class="ia-sub">👁 <b>La IA vio el vídeo:</b> ${esc(a.vision.nombre || 'Gemini Flash-Lite')} miró la grabación (${a.vision.tramos} tramos descritos${a.vision.tokens_entrada ? ', ' + Number(a.vision.tokens_entrada).toLocaleString('es') + ' tokens' : ''}) y el director editó sabiendo lo que se ve.</div>` : ''}
+      ${a.vision && a.vision.apagada ? `<div class="ia-sub">🙈 Editado solo con la transcripción (la opción «La IA ve el vídeo» estaba apagada).</div>` : ''}
+      ${a.vision && a.vision.ok === false ? `<div class="ia-sub">👁✗ <b>La IA no pudo ver el vídeo</b> (${esc(a.vision.motivo || 'sin detalle')}): se editó solo con la transcripción.</div>` : ''}
+    </div>`;
+  }else{
+    el.className = 'ia-banner fail';
+    el.innerHTML = `<span class="ia-ico">❌</span><div class="ia-cuerpo">
+      <div class="ia-tit">${esMejora ? 'NO PUDE APLICAR TU COMENTARIO' : 'NO ANALIZADO POR GEMINI'}</div>
+      <div class="ia-sub">${esMejora
+        ? 'Ningún modelo de Gemini respondió: no se creó una versión nueva ni se te descontó ninguna mejora. Tu comentario se conserva: pulsa «Reintentar» en unos minutos.'
+        : 'Ningún modelo de Gemini respondió, así que el vídeo <b>no se editó</b> (a propósito no se renderiza uno sin editar).'}</div>
+      <div class="ia-sub">Motivo: ${esc(a.motivo || 'desconocido')}</div>
+    </div>${enCurso ? '' : (esMejora ? `<button class="btn" onclick="act('retry')">↻ Reintentar</button>`
+                                     : '<button class="btn" onclick="reshuffle()">🔀 Reshuffle: volver a analizarlo</button>')}`;
+  }
+  el.style.display = '';
+}
+
+async function refresh(){
+  try{
+    const j = await (await fetch(`/api/job/${JID}`)).json();
+    document.getElementById('bar').style.width = (j.pct||3) + '%';
+    document.getElementById('stage').textContent = j.stage || '';
+    document.getElementById('eta').textContent =
+      (j.state === 'running' && j.eta_texto) ? `⏳ ~${j.eta_texto}` : '';
+    const b = document.getElementById('badge');
+    b.textContent = STATE_ES[j.state] || j.state; b.className = 'badge ' + j.state;
+    const active  = (j.state === 'running' || j.state === 'queued');
+    const paused  = (j.state === 'paused');
+    terminal = ['done','error','cancelled'].includes(j.state);
+    // el autor (2026-09-26): «ya se terminó, está en 100% y no sale el vídeo… la única forma es darle refresh». Si esta
+    // página vio el trabajo en marcha, al terminar se RECARGA sola una vez: así sale todo pintado de cero (el vídeo, los
+    // Shorts, las muletillas, la mejora). Al recargar ya nace terminado, así que no se repite.
+    if(active || paused) visteActivo = true;
+    if(terminal && visteActivo){ location.reload(); return; }
+    document.getElementById('btn-cancel').style.display = (active || paused) ? '' : 'none';
+    document.getElementById('btn-retry').style.display  = (active || paused) ? 'none' : '';
+    document.getElementById('btn-pause').style.display  = (j.state === 'running') ? '' : 'none';
+    document.getElementById('btn-resume').style.display = paused ? '' : 'none';
+    document.getElementById('pausehint').style.display  = paused ? '' : 'none';
+    document.getElementById('btn-reshuffle').style.display =
+      (JID.endsWith('--pro') || /--pro-v\d+$/.test(JID)) && !active && !paused ? '' : 'none';
+    renderIA(j.analisis, active || paused, !!(j.opts && j.opts.mejora));
+    // Se intenta SIEMPRE. El manifest en disco es la verdad; que él decida.
+    loadClips();
+    if(j.state === 'done') pintaMejora();
+    fallosApi = 0;
+    document.getElementById('apiwarn')?.remove();
+    if(!terminal) setTimeout(refresh, 2500);
+  }catch(e){
+    // Si el panel deja de responder, se AVISA (antes reintentaba callado para siempre)
+    if(++fallosApi >= 3 && !document.getElementById('apiwarn')){
+      const d = document.createElement('div');
+      d.id = 'apiwarn'; d.className = 'avisobox err';
+      d.innerHTML = '<b>Se perdió la conexión con el panel</b>'
+        + '<p class="muted">Lo sigo intentando. Si no vuelve, es que se cerró su ventana negra: '
+        + 'ábrelo otra vez con <code>ABRIR PANEL.cmd</code>.</p>';
+      document.querySelector('.wrap')?.prepend(d);
+    }
+    setTimeout(refresh, 4000);
+  }
+}
+async function act(what){
+  const btn = document.getElementById('btn-' + what);
+  if(btn) btn.disabled = true;
+  const r = await (await fetch(`/api/job/${JID}/${what}`, {method:'POST'})).json().catch(() => ({}));
+  if(r && r.ok === false && r.error){ alert(r.error); if(btn) btn.disabled = false; return; }   // p. ej. la grabación ya no está
+  if(btn) setTimeout(()=>{ btn.disabled = false; }, 1500);
+  if(what === 'retry') location.href = '/job/' + JID;
+  else { refresh(); loadClips(); }
+}
+async function reshuffle(){
+  if(!confirm('Vuelve a mandarle este mismo archivo al director (nuevo análisis '
+    + 'con Gemini) y renderiza una versión aparte. No borra ni toca esta que ya '
+    + 'tienes. ¿Seguir?')) return;
+  const btn = document.getElementById('btn-reshuffle');
+  btn.disabled = true; btn.textContent = 'Encolando…';
+  try{
+    const r = await (await fetch(`/api/job/${JID}/reshuffle`, {method:'POST'})).json();
+    if(!r.ok){ alert(r.error || 'No se pudo.'); btn.disabled = false;
+      btn.textContent = '🔀 Reshuffle (nueva versión)'; return; }
+    location.href = '/job/' + r.jid;
+  }catch(e){
+    alert('El panel no respondió.'); btn.disabled = false;
+    btn.textContent = '🔀 Reshuffle (nueva versión)';
+  }
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+// separa el/los emoji del final del título para mostrarlos a la derecha
+const EMOJI_RE = /\s*((?:\p{Extended_Pictographic}️?)+)\s*$/u;
+function splitEmoji(t){
+  t = (t||'').trim();
+  const m = t.match(EMOJI_RE);
+  return m ? { text: t.slice(0, m.index).trim(), emoji: m[1] } : { text: t, emoji: '' };
+}
+// doble clic sobre el título -> editable; Enter guarda; Esc cancela
+function editTitle(el){
+  if(el.isContentEditable) return;
+  const orig = el.textContent;
+  el.contentEditable = 'true'; el.classList.add('editing'); el.focus();
+  const rng = document.createRange(); rng.selectNodeContents(el);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(rng);
+  const finish = async (save) => {
+    el.contentEditable = 'false'; el.classList.remove('editing');
+    el.removeEventListener('keydown', onKey); el.removeEventListener('blur', onBlur);
+    const nuevo = el.textContent.replace(/\s+/g,' ').trim();
+    if(!save || !nuevo || nuevo === orig){ el.textContent = orig; return; }
+    el.textContent = nuevo;
+    const card = el.closest('.clip'); const arch = card.dataset.arch;
+    const emoji = card.querySelector('.t-emoji')?.textContent || '';
+    const full = (nuevo + (emoji ? ' ' + emoji : '')).slice(0,100);
+    const m = MANIFEST.find(x => x.archivo === arch); if(m) m.titulo = full;
+    el.style.opacity = .5;
+    try{
+      const r = await (await fetch(`/job/${JID}/titulo`, {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({archivo: arch, titulo: full})})).json();
+      if(r.ok){
+        const img = card.querySelector('.vposter');
+        if(img && r.miniatura) img.src = `/salida/${JID}/${encodeURIComponent(r.miniatura)}?v=${Date.now()}`;
+      }
+    }catch(e){}
+    el.style.opacity = '';
+  };
+  const onKey = e => {
+    if(e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    else if(e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  };
+  const onBlur = () => finish(true);
+  el.addEventListener('keydown', onKey); el.addEventListener('blur', onBlur);
+}
+
+// clic en una de las 3 opciones de título sugeridas (vídeo PRO) -> la aplica
+// igual que editTitle(): mismo endpoint, misma regeneración de miniatura.
+async function useTitulo(el){
+  const txt = el.dataset.txt, arch = el.dataset.arch;
+  const card = document.querySelector(`.clip[data-arch="${CSS.escape(arch)}"]`);
+  if(!card) return;
+  const full = txt.slice(0, 100);
+  const m = MANIFEST.find(x => x.archivo === arch); if(m) m.titulo = full;
+  const ttl = card.querySelector('.t-edit'); if(ttl) ttl.textContent = full;
+  const emo = card.querySelector('.t-emoji'); if(emo) emo.textContent = '';
+  el.style.opacity = .5;
+  try{
+    const r = await (await fetch(`/job/${JID}/titulo`, {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({archivo: arch, titulo: full})})).json();
+    if(r.ok){
+      const img = card.querySelector('.vposter');
+      if(img && r.miniatura) img.src = `/salida/${JID}/${encodeURIComponent(r.miniatura)}?v=${Date.now()}`;
+    }
+  }catch(e){}
+  el.style.opacity = '';
+}
+
+// copyTxt() (copiar prompt/título/descripción al portapapeles) vive en static/proinfo.js,
+// compartido con /video/<base>.
+function updateSel(){
+  const picks = [...document.querySelectorAll('.pick:checked')];
+  document.getElementById('nsel').textContent = picks.length;
+  document.getElementById('ndel').textContent = picks.length;
+  document.getElementById('btn-dl').disabled = picks.length === 0;
+  document.getElementById('btn-del').disabled = picks.length === 0;
+  const yn = document.getElementById('yt-nsel'); if(yn) yn.textContent = picks.length;
+  const ynr = document.getElementById('yt-nsel-r'); if(ynr) ynr.textContent = picks.length;
+  updatePlan();
+}
+function toggleManual(){
+  const m = document.getElementById('yt-manual');
+  const abrir = m.style.display === 'none';
+  m.style.display = abrir ? '' : 'none';
+  document.getElementById('btn-manual').textContent = abrir
+    ? '📅 Cerrar edición manual' : '📅 Elegir fechas y horas a mano';
+  if(abrir){
+    if(document.querySelectorAll('.pick:checked').length) prepSchedule();
+    m.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+}
+async function publishRapido(){
+  const archivos = [...document.querySelectorAll('.pick:checked')].map(c => c.value);
+  if(!archivos.length){ alert('Marca primero los vídeos que quieres subir.'); return; }
+  let prev;
+  try{
+    prev = await (await fetch(`/job/${JID}/publish-rapido?preview=1`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({archivos})})).json();
+  }catch(e){ alert('No se pudo calcular el plan.'); return; }
+  if(!prev.ok){ alert(prev.error || 'No se pudo.'); return; }
+  const fuente = {rendimiento:'tus mejores horas (por vistas)', costumbre:'las horas a las que sueles publicar', default:'horas por defecto'}[prev.fuente] || prev.fuente;
+  if(!confirm(
+    `Voy a programar ${prev.n} vídeo(s):\n\n`
+    + `· ${prev.por_dia} por día a las ${prev.horas.join(' y ')}\n`
+    + `· ${fuente}\n`
+    + `· del ${prev.desde} al ${prev.hasta}\n`
+    + (YT_LISTAS_OK.size ? `· y se añadirán a tus listas: ${ytListasNombres([...YT_LISTAS_OK])}\n` : '')
+    + `\n¿Programar en YouTube?`)) return;
+  const r = await (await fetch(`/job/${JID}/publish-rapido`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({archivos})})).json();
+  if(!r.ok){ alert(r.error || 'No se pudo programar.'); return; }
+  pollPublish();
+}
+async function deletePicked(){
+  const picks = [...document.querySelectorAll('.pick:checked')].map(c => c.value);
+  if(!picks.length) return;
+  const subidos = picks.filter(a => (PUB_ITEMS||[]).some(
+    it => it.archivo === a && it.state === 'done')).length;
+  let msg = `Vas a borrar ${picks.length} vídeo(s) de tu PC. Esto NO toca YouTube.`;
+  if(subidos) msg += `\n\n${subidos} ya está(n) subido(s) a YouTube (marcados en verde).`;
+  if(picks.length - subidos) msg += `\n${picks.length - subidos} NO se ha(n) subido: si los borras tendrás que volver a generarlos.`;
+  msg += '\n\n¿Seguir?';
+  if(!confirm(msg)) return;
+  const btn = document.getElementById('btn-del'); btn.disabled = true;
+  const r = await (await fetch(`/job/${JID}/borrar-local`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({archivos: picks})})).json();
+  btn.disabled = false;
+  if(!r.ok){ alert(r.error || 'No se pudo borrar.'); return; }
+  clipsRendered = -1;                 // fuerza re-pintado
+  loadClips();
+}
+function fmtDT(d){
+  return d.toLocaleDateString('es', {weekday:'short', day:'numeric', month:'short'})
+       + ' ' + d.toTimeString().slice(0,5);
+}
+// publish_at viene en UTC (ISO con Z). SIEMPRE mostrarlo en hora local, igual
+// que los <input type="time"> del formulario — si no, 16:00 COT se ve como 21:00.
+function fmtLocalDT(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return String(iso||'').slice(0,16).replace('T',' ');
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function planHoras(perday){
+  let hs = (document.getElementById('ad-hours').value||'')
+    .split(',').map(s=>s.trim()).filter(s=>/^\d{1,2}:\d{2}$/.test(s));
+  if(perday <= hs.length) return hs.slice(0, perday);
+  // pide más por día que horas dadas -> reparte uniforme entre 11:00 y 23:00
+  const out = [];
+  for(let k=0;k<perday;k++){
+    const mins = Math.round(11*60 + k*(12*60)/Math.max(1,perday-1));
+    out.push(`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);
+  }
+  return out;
+}
+function updatePlan(){
+  const box = document.getElementById('plan-summary'); if(!box) return;
+  const rows = document.querySelectorAll('#yt-rows tr[data-arch]:not(.yt-descrow)');
+  if(rows.length === 1){
+    const tr = rows[0];
+    const d = tr.querySelector('.yt-date').value, t = tr.querySelector('.yt-time').value;
+    box.innerHTML = d ? `Se publica el <b>${fmtDT(new Date(d + 'T' + (t || '00:00')))}</b>`
+                       : 'Elige fecha y hora de publicación arriba.';
+    return;
+  }
+  const n = rows.length || document.querySelectorAll('.pick:checked').length;
+  const start = document.getElementById('ad-date').value;
+  const perday = Math.max(1, parseInt(document.getElementById('ad-perday').value||'1'));
+  const hs = planHoras(perday);
+  if(!n){ box.textContent = 'Marca vídeos arriba y pulsa "Preparar".'; return; }
+  if(!start){ box.textContent = `${n} vídeo(s) seleccionados. Elige fecha de inicio.`; return; }
+  const dias = Math.ceil(n/perday);
+  const first = new Date(start + 'T' + hs[0]);
+  const last = new Date(new Date(start+'T00:00').getTime() + (dias-1)*86400000);
+  box.innerHTML = `<b>${n}</b> vídeo(s), <b>${perday}</b> por día a las <b>${hs.join(' · ')}</b> · `
+    + `del <b>${fmtDT(first)}</b> al <b>${last.toLocaleDateString('es',{day:'numeric',month:'short'})}</b> (${dias} días)`;
+}
+function pickAll(v){ document.querySelectorAll('.pick').forEach(c => c.checked = v); updateSel(); }
+function pickApproved(){
+  // "Aprobados" = las tarjetas en verde: ya subidas o programadas en YouTube.
+  document.querySelectorAll('.pick').forEach(c => {
+    const card = c.closest('.clip');
+    c.checked = !!(card && card.classList.contains('uploaded'));
+  });
+  updateSel();
+}
+function downloadPicked(){
+  const q = [...document.querySelectorAll('.pick:checked')]
+    .map(c => 'f=' + encodeURIComponent(c.value)).join('&');
+  if(q) window.location = `/job/${JID}/zip?` + q;
+}
+let MANIFEST = [];
+let fallosApi = 0;
+let clipsRendered = -1;   // nº de vídeos ya pintados (se re-pinta solo si cambia)
+let visteActivo = false;  // la página vio el trabajo en marcha (al terminar se recarga sola: ver refresh)
+
+// La pantalla NUNCA se queda en blanco sin explicar por qué.
+function avisoClips(titulo, detalle, reintentar){
+  const cont = document.getElementById('clips');
+  if(!cont || clipsRendered > 0) return;      // si ya hay vídeos pintados, no molestar
+  cont.innerHTML = `<div class="avisobox">
+      <b>${titulo}</b>
+      ${detalle ? `<p class="muted">${detalle}</p>` : ''}
+      ${reintentar ? `<button class="btn ghost sm" onclick="clipsRendered=-1;loadClips()">Reintentar</button>` : ''}
+    </div>`;
+}
+
+// Un vídeo PRO con "Solo analizar" marcado NUNCA deja manifest.json (no se
+// llegó a renderizar nada) — pero SÍ deja videos.json con el análisis.
+async function mostrarSoloAnalisis(){
+  let datos;
+  try{
+    const r = await fetch(`/salida/${JID}/videos.json`, {cache: 'no-store'});
+    if(!r.ok) return false;
+    datos = await r.json();
+  }catch(e){ return false; }
+  if(!datos || !((datos.titulos_sugeridos||[]).length || datos.descripcion)) return false;
+
+  const cont = document.getElementById('clips');
+  if(!cont) return true;
+  clipsRendered = 1;
+  const titulos = datos.titulos_sugeridos || [];
+  const prompts = datos.miniatura_prompts || [];
+  cont.innerHTML = `
+    <div class="avisobox">
+      <b>Solo análisis — todavía no hay vídeo</b>
+      <p class="muted">Marcaste "Solo analizar": esto es la vista previa, no se
+      renderizó nada. Si te convence, vuelve a <a href="${VIDEOS_URL}">Vídeos PRO</a>
+      y genera el mismo archivo SIN esa casilla para tener el vídeo completo.</p>
+    </div>
+    <div class="pro-ab" style="margin-top:12px">
+      <div class="pro-ab-grid">
+        <div>
+          <div class="pro-ab-label">TÍTULOS A/B/C</div>
+          ${titulos.map((t,i) => `
+          <div class="pro-ab-titulo">
+            <span style="flex:0 0 16px">${i===0?'🥇':i===1?'🥈':'🥉'}</span>
+            <span style="flex:1">${esc(t)}</span>
+            <button type="button" class="btn ghost sm" style="flex:0 0 auto;padding:2px 6px;font-size:10px"
+                    data-txt="${esc(t)}" onclick="copyTxt(this)">copiar</button>
+          </div>`).join('') || '<div class="muted" style="font-size:11px">(el director no sugirió títulos)</div>'}
+          ${promptsMiniaturaHTML(prompts, '', datos.miniatura_titulares)}
+        </div>
+        ${datos.descripcion ? `
+        <div>
+          <div class="pro-ab-desc-head">
+            <span class="pro-ab-label" style="margin:0">DESCRIPCIÓN DE YOUTUBE</span>
+            <button type="button" class="btn ghost sm" style="flex:0 0 auto;padding:2px 6px;font-size:10px"
+                    data-txt="${esc(datos.descripcion)}" onclick="copyTxt(this)">copiar todo</button>
+          </div>
+          <pre class="pro-ab-desc">${esc(datos.descripcion)}</pre>
+        </div>` : ''}
+      </div>
+    </div>`;
+  return true;
+}
+
+// Pregunta al panel que queda en la carpeta y da el mensaje que toca.
+// No es lo mismo "no salio ningun vídeo" (hay algo que revisar) que
+// "salieron varios y los borraste" (todo correcto, no hay nada que hacer).
+async function avisoVacio(){
+  // Mientras el trabajo sigue en marcha no hay nada que diagnosticar. Antes, a mitad del render de un Vídeo PRO, el
+  // análisis de la IA (videos.json) ya existía y se pintaba «Solo análisis — todavía no hay vídeo» marcándolo como un
+  // vídeo pintado: al llegar el vídeo de verdad (también 1) la página creía que no había nada nuevo y no lo enseñaba
+  // hasta recargar (el autor, 2026-09-26). Tampoco vale «el trabajo no dejó ningún vídeo»: aún no ha terminado.
+  if(!terminal){
+    avisoClips('Renderizando…', 'El vídeo aparecerá aquí en cuanto termine: la página se recarga sola.', false);
+    return;
+  }
+  if(JID.endsWith('--pro') && await mostrarSoloAnalisis()) return;
+  let inv = null;
+  try{ inv = await (await fetch(`/job/${JID}/inventario`)).json(); }catch(e){}
+
+  if(!inv){
+    avisoClips('No se pudo comprobar la carpeta',
+      'El panel no respondió. Si su ventana negra sigue abierta, dale a Reintentar.', true);
+    return;
+  }
+  if(!inv.carpeta){
+    avisoClips('Esta carpeta ya no existe',
+      'Se borró entera del disco. El trabajo no se vuelve a analizar solo: si lo '
+      + 'quieres otra vez, pégalo de nuevo en el panel.', false);
+    return;
+  }
+  if(inv.generados > 0 && inv.mp4 === 0){
+    avisoClips('No queda ningún vídeo: los borraste tú',
+      `Este trabajo generó <b>${inv.generados}</b> vídeo(s) en su día y ya no hay ninguno `
+      + 'en el disco. Todo correcto, no hay nada que revisar aquí. Los que subiste a '
+      + 'YouTube siguen en tu canal.', false);
+    return;
+  }
+  if(inv.generados > 0 && inv.mp4 > 0){
+    const gb = (inv.bytes||0) / 1073741824;
+    const sitio = gb >= 1 ? gb.toFixed(2) + ' GB' : Math.round((inv.bytes||0)/1048576) + ' MB';
+    avisoClips(`Quedan ${inv.mp4} vídeo(s) sueltos en la carpeta`,
+      `Los vídeos ya no están en el listado, pero en el disco siguen <b>${inv.mp4}</b> `
+      + `archivo(s) ocupando <b>${sitio}</b>. De los <b>${inv.generados}</b> que generó `
+      + `este trabajo, esos son los que sobran.`
+      + `<div style="margin-top:10px"><button class="btn ghost sm" onclick="borrarSueltos()">`
+      + `Borrar esos ${inv.mp4} del disco (${sitio})</button></div>`, false);
+    window._SUELTOS = inv.sueltos || [];
+    return;
+  }
+  avisoClips('El trabajo no dejó ningún vídeo',
+    'Terminó pero no salió ninguno. Mira el registro de arriba.', true);
+}
+
+// Borra del PC los vídeos que quedaron sueltos en la carpeta. No toca YouTube:
+// lo que ya subiste sigue publicado en tu canal.
+async function borrarSueltos(){
+  const lista = window._SUELTOS || [];
+  if(!lista.length) return;
+  if(!confirm(`Se borran ${lista.length} archivo(s) de tu disco.\n\n`
+    + `Lo que ya subiste a YouTube NO se toca: sigue en tu canal.\n\n¿Seguir?`)) return;
+  const cont = document.getElementById('clips');
+  cont.innerHTML = '<div class="avisobox"><b>Borrando…</b></div>';
+  try{
+    const r = await (await fetch(`/job/${JID}/borrar-local`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({archivos: lista})
+    })).json();
+    if(!r.ok){
+      avisoClips('No se pudieron borrar', r.error || '?', true);
+      return;
+    }
+    clipsRendered = -1;
+    await avisoVacio();
+  }catch(e){
+    avisoClips('No se pudieron borrar', 'El panel no respondió.', true);
+  }
+}
+
+async function loadClips(){
+  let man, resp;
+  try{
+    resp = await fetch(`/salida/${JID}/manifest.json`, {cache:'no-store'});
+  }catch(e){
+    avisoClips('No se pudo hablar con el panel',
+      'El panel no responde. ¿Cerraste su ventana negra? Vuelve a abrirlo con ABRIR PANEL.cmd.', true);
+    return;
+  }
+  if(resp.status === 404){
+    await avisoVacio();
+    return;
+  }
+  if(!resp.ok){
+    avisoClips('El panel devolvió un error', `HTTP ${resp.status} al leer el manifest.`, true);
+    return;
+  }
+  try{
+    man = await resp.json();
+  }catch(e){
+    avisoClips('El listado de vídeos está corrupto',
+      'El fichero manifest.json no se puede leer (quizá se cortó la luz a mitad de escritura). '
+      + 'Vuelve a generar el vídeo.', true);
+    return;
+  }
+  if(!Array.isArray(man)){
+    avisoClips('El listado de vídeos tiene un formato raro', 'manifest.json no es una lista.', true);
+    return;
+  }
+  if(!man.length){
+    await avisoVacio();
+    return;
+  }
+  MANIFEST = man;
+
+  if(clipsRendered < 0){                       // primer manifest que llega
+    document.getElementById('clips-empty')?.remove();
+    document.getElementById('seltoolbar').style.display = 'flex';
+    ytStatus();
+  }
+  const pb = document.getElementById('clips-partial');
+  if(!terminal){
+    pb.style.display = '';
+    pb.textContent = `Generando… ${man.length} vídeo(s) listos hasta ahora. `
+      + `Puedes marcarlos y programarlos ya; el resto irá apareciendo.`;
+  } else { pb.style.display = 'none'; }
+
+  if(man.length === clipsRendered){ updateSel(); return; }   // nada nuevo: no re-pintes
+
+  const wasChecked = new Set(
+    [...document.querySelectorAll('.pick:checked')].map(c => c.value));
+  clipsRendered = man.length;
+  {
+    const man2 = man.slice().sort((a,b) => (b.score||0) - (a.score||0));
+    document.getElementById('clips').innerHTML = man2.map(c => {
+      const chip = `<span class="tag-chip vid">VÍDEO ${c.duracion?Math.round(c.duracion/60)+' min':''}</span>`;
+      const poster = `/salida/${JID}/${encodeURIComponent(c.miniatura || c.archivo.replace(/\.mp4$/,'.jpg'))}`;
+      // "ritmo del vídeo" + "títulos, miniatura y descripción": compartido con /video/<base>
+      // (static/proinfo.js) — aquí el clic de una fila salta el vídeo de ESTA tarjeta
+      // (seekVideo ya sabe encontrarlo por .pro-video-row) y "usar título" es el de siempre.
+      const ritmoHTML = ritmoTablaHTML(c.eventos_visuales, c.duracion, () => 'seekVideo(this)', c.ritmo);
+      return `
+      <div class="clip horiz${c.pro?' pro-full':''}" data-arch="${esc(c.archivo)}">
+        <label class="picklabel"><input type="checkbox" class="pick"
+               value="${esc(c.archivo)}" ${wasChecked.has(c.archivo)?'checked':''}
+               onchange="updateSel()"> elegir</label>
+        <div class="pro-video-row">
+          <div class="vwrap" data-src="/salida/${JID}/${encodeURIComponent(c.archivo)}"
+               onclick="playCard(this)" title="Reproducir">
+            <img class="vposter" loading="lazy" decoding="async" src="${poster}" alt=""
+                 onerror="this.style.background='#000';this.removeAttribute('src')">
+            <span class="vplay">▶</span>
+          </div>
+          ${c.pro && (c.eventos_visuales||[]).length ? `
+          <div class="pro-ritmo">
+            <a class="btn pro-editar descargar" href="/job/${JID}/descargar"
+               title="Guarda este vídeo (el mp4 ya editado) en tu PC">⬇ Descargar el vídeo</a>
+            <a class="btn pro-editar" href="/job/${JID}/editar"
+               title="Abre el editor: marca un inicio y un fin sobre la línea de tiempo y quita ese tramo">✂️ Editar / cortar el vídeo</a>
+            <button type="button" class="btn ghost pro-editar" onclick="mulJob()"
+               title="Las muletillas que más repites en este vídeo y un par de consejos (sin IA: salen de la transcripción)">🗣️ Tus muletillas</button>
+            <section class="card mul-card" id="mul-job" style="display:none;margin:0 0 10px"></section>
+            ${ritmoHTML}
+          </div>` : ''}
+        </div>
+        ${c.pro && !(c.eventos_visuales||[]).length ? `<div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn descargar" href="/job/${JID}/descargar" title="Guarda este vídeo (el mp4 ya editado) en tu PC">⬇ Descargar el vídeo</a>
+          <a class="btn" href="/job/${JID}/editar">✂️ Editar / cortar el vídeo</a>
+          <button type="button" class="btn ghost" onclick="mulJob()">🗣️ Tus muletillas</button></div>
+          <section class="card mul-card" id="mul-job" style="display:none;margin:10px 0"></section>` : ''}
+        ${c.pro ? '<div id="mejora-slot"></div>' : ''}
+        <div class="t">${chip}
+          ${c.score!=null ? `<span class="score">${c.score}</span>` : ''}
+          <span class="t-edit" spellcheck="false" title="doble clic para editar, Enter para guardar"
+                ondblclick="editTitle(this)">${esc(splitEmoji(c.titulo).text) || '(sin título)'}</span>
+          <span class="t-emoji">${esc(splitEmoji(c.titulo).emoji)}</span>
+        </div>
+        ${c.pro ? '' : `<div class="m">${c.origen} · ${c.duracion}s · ${c.tag||''}</div>
+        <div class="m muted">${esc(c.razon)}</div>`}
+        ${c.pro ? `
+        <div class="pro-ab">
+          ${titulosDescripcionHTML({titulos_sugeridos: c.titulos_sugeridos, titulos_anteriores: c.titulos_anteriores,
+                                    miniatura_prompts: c.miniatura_prompts, miniatura_titulares: c.miniatura_titulares,
+                                    descripcion: c.descripcion, archivo: c.archivo,
+                                    jid: JID}, () => 'useTitulo(this)')}
+        </div>` : ''}
+        <div class="clip-pie">
+          ${c.pro ? '' : `<a class="btn ghost sm" download href="/salida/${JID}/${encodeURIComponent(c.archivo)}">⬇ Descargar</a>`}
+          <div class="sched-slot"></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  updateSel();
+  pintaMejora();
+  pollPublish();
+  // los Shorts que salieron del vídeo, abajo del todo (solo en un Vídeo PRO)
+  const hs = document.getElementById('shorts-slot');
+  if(hs) hs.innerHTML = (MANIFEST.length === 1 && MANIFEST[0].pro) ? shortsHTML(MANIFEST[0], JID) : '';
+  // «📝 Crear artículo» para tu web, debajo de los Shorts (solo en un Vídeo PRO terminado)
+  const ha = document.getElementById('articulo-slot');
+  if(ha && MANIFEST.length === 1 && MANIFEST[0].pro && !ha.dataset.jid) articuloSlot(JID, ha);
+  const hr = document.getElementById('redes-slot');
+  if(hr && MANIFEST.length === 1 && MANIFEST[0].pro && !hr.dataset.jid) redesSlot(JID, hr);
+  // «🖼️ Carrusel» para Instagram y TikTok, debajo de las publicaciones para redes (solo en un Vídeo PRO terminado)
+  const hc = document.getElementById('carrusel-slot');
+  if(hc && MANIFEST.length === 1 && MANIFEST[0].pro && !hc.dataset.jid) carruselSlot(JID, hc);
+}
+
+// ===================== YouTube: conectar / programar / publicar =====================
+let ytPollTimer = null, ytAuthUrl = null;
+function gotoYT(){
+  document.getElementById('yth2').scrollIntoView({behavior:'smooth', block:'start'});
+  if(document.getElementById('yt-sched').style.display !== 'none'
+     && document.querySelectorAll('.pick:checked').length) prepSchedule();
+}
+async function ytStatus(){
+  try{
+    const s = await (await fetch('/youtube/status')).json();
+    const conn = document.getElementById('yt-conn');
+    document.getElementById('yth2').style.display = '';
+    document.getElementById('ytpanel').style.display = '';
+    if(!s.available){
+      conn.innerHTML = `<span class="muted">YouTube no disponible: ${esc(s.reason||'')}.</span>`;
+      return;
+    }
+    if(s.connecting){
+      const link = ytAuthUrl || s.auth_url;
+      conn.innerHTML = `<span class="muted">Esperando que autorices en Google…</span>
+        ${link ? `<div style="margin-top:6px">¿No se abrió la ventana?
+        <a href="${link}" target="_blank" rel="noopener"><b>Abre este enlace para autorizar</b></a></div>`:''}
+        ${s.error ? `<div style="color:var(--bad);margin-top:6px">${esc(s.error)}</div>`:''}
+        <div style="margin-top:6px"><a href="#" class="muted" onclick="ytConnect();return false">empezar de nuevo</a></div>`;
+      clearTimeout(ytPollTimer); ytPollTimer = setTimeout(ytStatus, 2000);
+      return;
+    }
+    if(!s.connected){
+      conn.innerHTML = `<button class="btn" onclick="ytConnect()">Conectar YouTube</button>
+        <span class="muted"> — se abre Google una vez</span>
+        ${s.error ? `<div style="color:var(--bad);margin-top:6px">${esc(s.error)}</div>`:''}`;
+      document.getElementById('yt-sched').style.display = 'none';
+      return;
+    }
+    conn.innerHTML = `<span class="badge done">Conectado</span> canal: <b>${esc(s.channel||'?')}</b>
+      &nbsp;<a href="#" onclick="ytDisconnect();return false" class="muted">desconectar</a>`;
+    document.getElementById('yt-sched').style.display = '';
+    if(!YT_LISTAS_PEDIDAS){ YT_LISTAS_PEDIDAS = true; ytListasCarga(false); }
+    if(!document.getElementById('ad-date').value){
+      const d = new Date(Date.now()+86400000); document.getElementById('ad-date').value = d.toISOString().slice(0,10);
+    }
+    updatePlan();
+    pollPublish();
+  }catch(e){}
+}
+async function ytConnect(){
+  const conn = document.getElementById('yt-conn');
+  conn.innerHTML = '<span class="muted">Generando enlace de autorización…</span>';
+  try{
+    const r = await (await fetch('/youtube/connect', {method:'POST'})).json();
+    if(!r.ok){ conn.innerHTML = `<span style="color:var(--bad)">${esc(r.error||'error')}</span>
+      <div style="margin-top:6px"><button class="btn" onclick="ytConnect()">Reintentar</button></div>`; return; }
+    ytAuthUrl = r.auth_url;
+    window.open(r.auth_url, '_blank', 'noopener');
+    setTimeout(ytStatus, 600);
+  }catch(e){ conn.innerHTML = '<span style="color:var(--bad)">No se pudo iniciar. Reintenta.</span>'; }
+}
+async function ytDisconnect(){
+  await fetch('/youtube/disconnect', {method:'POST'});
+  ytStatus();
+}
+let _thumbT = {};
+function refreshThumb(titleInput){
+  const tr = titleInput.closest('tr');
+  const arch = tr.dataset.arch;
+  clearTimeout(_thumbT[arch]);
+  _thumbT[arch] = setTimeout(()=>{
+    const img = document.querySelector(`#yt-rows tr.yt-descrow[data-arch="${CSS.escape(arch)}"] .yt-thumb-auto`);
+    if(img) img.src = `/job/${JID}/thumb?archivo=${encodeURIComponent(arch)}`
+      + `&tag=${encodeURIComponent(tr.dataset.tag||'')}&layout=${encodeURIComponent(tr.dataset.layout||'')}`
+      + `&title=${encodeURIComponent(titleInput.value)}&_=${Date.now()}`;
+  }, 700);
+}
+// Títulos A/B/C sugeridos por el director, como chips clicables dentro de la
+// propia fila de programar (antes solo se podían "usar" desde la galería,
+// aparte — el autor pidió (2026-09-22) tenerlo aquí mismo, listo para publicar).
+function titulosChipsHTML(titulos){
+  if(!titulos || !titulos.length) return '';
+  const medallas = ['🥇','🥈','🥉'];
+  return `<div class="title-pick-row">${titulos.map((t,i)=>
+    `<span class="title-pick" data-txt="${esc(t)}" title="${esc(t)}" onclick="elegirTitulo(this)">`
+    + `${medallas[i]||'•'} ${esc(t.length>30 ? t.slice(0,30)+'…' : t)}</span>`
+  ).join('')}</div>`;
+}
+function elegirTitulo(el){
+  const tr = el.closest('tr');
+  const inp = tr.querySelector('.yt-title');
+  inp.value = el.dataset.txt;
+  tr.querySelectorAll('.title-pick').forEach(s=>s.classList.remove('sel'));
+  el.classList.add('sel');
+  refreshThumb(inp);
+}
+// Miniatura A/B/C: la automática siempre está (por eso empieza elegida), y
+// el autor puede subir la suya (la retoca a mano en Photoshop) como candidata
+// extra — clic en cualquiera para elegirla antes de programar.
+function elegirMiniatura(el){
+  const row = el.closest('.thumb-pick-row');
+  row.querySelectorAll('.thumb-pick').forEach(t=>t.classList.remove('sel'));
+  el.classList.add('sel');
+  const trMain = document.querySelector(`#yt-rows tr[data-arch="${CSS.escape(row.dataset.arch)}"]:not(.yt-descrow)`);
+  if(trMain) trMain.dataset.thumbChoice = el.dataset.cid === 'auto' ? '' : el.dataset.cid;
+}
+function agregarCandidatoMiniatura(row, cid, url, elegir){
+  const addTile = row.querySelector('.thumb-pick-add');
+  const tile = document.createElement('div');
+  tile.className = 'thumb-pick'; tile.dataset.cid = cid;
+  tile.onclick = () => elegirMiniatura(tile);
+  tile.innerHTML = `<img src="${url}" alt="miniatura propia"><span class="thumb-pick-tag">Tuya</span>`;
+  row.insertBefore(tile, addTile);
+  if(elegir) elegirMiniatura(tile);
+}
+async function cargarCandidatosMiniatura(row){
+  try{
+    const cands = await (await fetch(`/job/${JID}/thumb-candidatos?archivo=${encodeURIComponent(row.dataset.arch)}`)).json();
+    cands.forEach(c => agregarCandidatoMiniatura(row, c.id, c.url, !!c.preferida));   // «Usar esta» (con IA): ya elegida
+  }catch(e){}
+}
+async function subirMiniatura(input){
+  const file = input.files[0]; if(!file) return;
+  const row = input.closest('.thumb-pick-row');
+  const etiqueta = input.closest('.thumb-pick-add').querySelector('span');
+  const original = etiqueta.innerHTML;
+  etiqueta.textContent = 'Subiendo…';
+  input.disabled = true;
+  const fd = new FormData();
+  fd.append('archivo', row.dataset.arch);
+  fd.append('file', file);
+  try{
+    const r = await (await fetch(`/job/${JID}/thumb-upload`, {method:'POST', body: fd})).json();
+    if(!r.ok){ alert(r.error || 'No se pudo subir la miniatura.'); return; }
+    agregarCandidatoMiniatura(row, r.id, r.url, true);
+  }catch(e){ alert('No se pudo subir (red).'); }
+  finally{ etiqueta.innerHTML = original; input.value = ''; input.disabled = false; }
+}
+function prepSchedule(){
+  const picks = [...document.querySelectorAll('.pick:checked')].map(c=>c.value);
+  const tbody = document.getElementById('yt-rows');
+  if(!picks.length){ tbody.innerHTML = '<tr><td class="muted">Marca vídeos arriba primero.</td></tr>'; return; }
+  // Un solo vídeo (el caso normal de Vídeo PRO): nada de "vídeos por día" ni
+  // horas en lote — una fecha lista para mañana y listo (el autor, 2026-09-22:
+  // esa parte "no tiene sentido para un solo vídeo", que sea más friendly).
+  const unoSolo = picks.length === 1;
+  const batch = document.getElementById('ad-batch');
+  if(batch) batch.style.display = unoSolo ? 'none' : '';
+  const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const rows = picks.map(arch=>{
+    const m = MANIFEST.find(x=>x.archivo===arch) || {};
+    const t0 = (m.titulo||arch.replace('.mp4',''));
+    const desc = (m.descripcion || m.titulo || '').trim();
+    // las 5 etiquetas SEO del vídeo (Vídeo PRO); «video-pro» es una marca INTERNA, no una etiqueta de YouTube
+    const tags = (Array.isArray(m.tags) && m.tags.length ? m.tags.join(', ') : (m.pro ? '' : (m.tag||''))).trim();
+    const fecha = unoSolo ? manana : '';
+    const hora = planHoras(1)[0] || '18:00';
+    return `<tr data-arch="${esc(arch)}" data-tag="${esc(m.tag||'')}" data-layout="${esc(m.layout||'')}">
+      <td>
+        <input class="yt-title" value="${esc(t0)}" maxlength="100" oninput="refreshThumb(this)">
+        ${titulosChipsHTML(m.titulos_sugeridos)}
+      </td>
+      <td><input type="date" class="yt-date" value="${esc(fecha)}" oninput="updatePlan()"></td>
+      <td><input type="time" class="yt-time" value="${esc(hora)}" oninput="updatePlan()"></td>
+      <td><input class="yt-tags" value="${esc(tags)}"></td>
+      <td class="yt-res muted">—</td></tr>
+    <tr class="yt-descrow" data-arch="${esc(arch)}"><td colspan="5">
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div>
+          <div class="pro-ab-label" style="margin-bottom:6px">MINIATURA — clic para elegir</div>
+          <div class="thumb-pick-row" data-arch="${esc(arch)}">
+            <div class="thumb-pick sel" data-cid="auto" onclick="elegirMiniatura(this)">
+              <img class="yt-thumb-auto" alt="automática"
+                   src="/job/${JID}/thumb?archivo=${encodeURIComponent(arch)}&tag=${encodeURIComponent(m.tag||'')}&layout=${encodeURIComponent(m.layout||'')}&title=${encodeURIComponent(t0)}">
+              <span class="thumb-pick-tag">Auto</span>
+            </div>
+            <label class="thumb-pick thumb-pick-add">
+              <span>+ Subir<br>tu miniatura</span>
+              <input type="file" accept="image/*" style="display:none" onchange="subirMiniatura(this)">
+            </label>
+          </div>
+        </div>
+        <div style="flex:1;min-width:220px">
+          <textarea class="yt-desc" rows="3" placeholder="descripción" style="width:100%">${esc(desc)}</textarea>
+        </div>
+      </div></td></tr>`;
+  }).join('');
+  tbody.innerHTML = `<tr class="head"><th>Título</th><th>Fecha</th><th>Hora</th><th>Tags</th><th></th></tr>` + rows;
+  document.querySelectorAll('#yt-rows .thumb-pick-row').forEach(row => cargarCandidatosMiniatura(row));
+  if(unoSolo){ updatePlan(); document.getElementById('yt-go').disabled = false; }
+  else autoFill();
+}
+function autoFill(){
+  const start = document.getElementById('ad-date').value;
+  const perday = Math.max(1, parseInt(document.getElementById('ad-perday').value||'1'));
+  const hs = planHoras(perday);
+  if(start){
+    const base = new Date(start + 'T00:00');
+    document.querySelectorAll('#yt-rows tr[data-arch]:not(.yt-descrow)').forEach((tr,i)=>{
+      const day = Math.floor(i / perday);
+      const slot = i % perday;
+      const d = new Date(base.getTime() + day*86400000);
+      tr.querySelector('.yt-date').value = d.toISOString().slice(0,10);
+      tr.querySelector('.yt-time').value = hs[slot] || hs[hs.length-1];
+    });
+  }
+  updatePlan();
+}
+async function publish(){
+  const rows = [];
+  document.querySelectorAll('#yt-rows tr[data-arch]:not(.yt-descrow)').forEach(tr=>{
+    const arch = tr.dataset.arch;
+    const date = tr.querySelector('.yt-date').value, time = tr.querySelector('.yt-time').value;
+    const drow = document.querySelector(`#yt-rows tr.yt-descrow[data-arch="${CSS.escape(arch)}"]`);
+    let publish_at = null;
+    if(date && time){
+      const dt = new Date(date + 'T' + time);
+      if(dt.getTime() > Date.now() + 60000) publish_at = dt.toISOString();
+    }
+    rows.push({
+      archivo: arch,
+      title: tr.querySelector('.yt-title').value,
+      tags: tr.querySelector('.yt-tags').value,
+      description: drow ? drow.querySelector('.yt-desc').value : '',
+      publish_at,
+      thumb_candidato: tr.dataset.thumbChoice || null
+    });
+  });
+  // que NUNCA se publiquen dos al mismo minuto: separa los repetidos
+  const usados = new Set((PUB_ITEMS||[]).map(it=>it.publish_at).filter(Boolean));
+  rows.forEach(r=>{
+    if(!r.publish_at) return;
+    let t = new Date(r.publish_at).getTime();
+    while(usados.has(new Date(t).toISOString())) t += 7*60000;   // +7 min
+    r.publish_at = new Date(t).toISOString();
+    usados.add(r.publish_at);
+  });
+  const bad = rows.filter(r=>!r.publish_at);
+  if(bad.length && !confirm(`${bad.length} vídeo(s) sin fecha futura válida se subirán como PÚBLICOS ya. ¿Seguir?`)) return;
+  document.getElementById('yt-go').disabled = true;
+  const r = await (await fetch(`/job/${JID}/publish`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({rows})})).json();
+  if(!r.ok){ alert(r.error||'error'); document.getElementById('yt-go').disabled=false; return; }
+  pollPublish();
+}
+let PUB_ITEMS = [];
+function markScheduled(items){
+  document.querySelectorAll('.clip .sched-slot').forEach(el => el.innerHTML = '');
+  document.querySelectorAll('.clip.uploaded').forEach(c => c.classList.remove('uploaded'));
+  items.forEach(it=>{
+    const card = document.querySelector(`.clip[data-arch="${CSS.escape(it.archivo)}"]`);
+    if(!card) return;
+    const slot = card.querySelector('.sched-slot');
+
+    // subido / programado en YouTube: la tarjeta queda EXACTAMENTE igual
+    // (elegir, preview, descargar, volver a programar) — solo que TODA en verde.
+    if(it.state === 'done') card.classList.add('uploaded');
+
+    // el estado en una píldora (azul programado, verde publicado, ámbar en cola, rojo error) y las acciones como botones
+    // pequeños — el autor (2026-09-26): «esto se ve muy feo, mejóralo» (antes: «Programado» en ROJO, como un error, y enlaces sueltos)
+    let cls = 'cola', label = '⏳ En cola para YouTube', tip = it.title || '';
+    if(it.state === 'uploading'){ cls = 'subiendo'; label = `⬆ Subiendo… ${it.pct||0}%`; }
+    else if(it.state === 'error'){ cls = 'err'; label = '✖ Error al subir'; tip = it.error || ''; }
+    else if(it.state === 'done'){
+      const d = it.publish_at ? new Date(it.publish_at) : null;
+      const largo = d ? `${d.toLocaleDateString('es',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} a las ${d.toTimeString().slice(0,5)}` : '';
+      if(d && d.getTime() > Date.now()){
+        cls = 'prog'; label = `📅 Programado · ${d.toLocaleDateString('es',{weekday:'short',day:'numeric',month:'short'})}, ${d.toTimeString().slice(0,5)}`;
+        tip = `Sale en YouTube el ${largo}. Hasta entonces es privado.`;
+      } else if(d){ cls = 'pub'; label = '✅ Publicado'; tip = `Salió en YouTube el ${largo}.`; }
+      else { cls = 'pub'; label = '✅ Subido a YouTube'; tip = 'Verifícalo en tu canal: ' + (it.url||''); }
+    }
+    const canEdit = ['queued','done'].includes(it.state);
+    slot.innerHTML = `<span class="yt-estado ${cls}" title="${esc(tip)}">${label}</span>`
+      + (it.state==='done' && it.thumb_set === false ? `<span class="yt-aviso" title="${esc(it.thumb_error||'')}">⚠ miniatura no puesta</span>` : '')
+      + (it.state==='done' && (it.listas||[]).length ? ytListasAviso(it) : '')
+      + (it.url ? `<a class="btn ghost sm yt-acc" href="${esc(it.url)}" target="_blank" rel="noopener">▶ Ver en YouTube</a>` : '')
+      + (canEdit ? `<button type="button" class="btn ghost sm yt-acc" onclick="editSched('${it.id}')">✏️ Editar</button>` : '')
+      + (it.state==='done' && it.video_id ? `<button type="button" class="btn ghost sm yt-acc" onclick="rethumb('${it.id}',this)" title="Vuelve a subir la miniatura a YouTube">↻ Miniatura</button>` : '')
+      + (it.state==='done' && it.video_id ? `<button type="button" class="btn ghost sm yt-acc" onclick="reListas('${it.id}',this)" title="Añade el vídeo a las listas de reproducción marcadas arriba (o reintenta las que fallaron)">↻ Listas</button>` : '')
+      + (it.thumb_url ? `<a class="btn ghost sm yt-acc" href="${esc(it.thumb_url)}" target="_blank" rel="noopener" title="Esto es EXACTAMENTE la miniatura que YouTube tiene guardada para este vídeo">🖼 Ver miniatura</a>` : '')
+      + (canEdit ? `<button type="button" class="btn ghost sm yt-acc peligro" onclick="delSched('${it.id}')" title="${it.state==='done' ? 'Lo BORRA de YouTube (te pide confirmación)' : 'Lo saca de la cola'}">🗑 Quitar</button>` : '');
+  });
+}
+// ===================== 📚 Listas de reproducción: las marcadas se recuerdan y cada vídeo se añade a ellas al subirse =====================
+let YT_LISTAS = [], YT_LISTAS_OK = new Set(), YT_LISTAS_PEDIDAS = false;
+function ytListasNombres(ids){ return ids.map(id => (YT_LISTAS.find(l => l.id === id) || {titulo: id}).titulo).join(' · '); }
+async function ytListasCarga(refrescar){
+  const cab = document.getElementById('yt-listas'), res = document.getElementById('yt-dd-resumen');
+  cab.style.display = '';
+  try{
+    const r = await (await fetch('/api/youtube/listas' + (refrescar ? '?refrescar=1' : ''))).json();
+    if(!r.ok){ res.innerHTML = '<span class="muted">No disponible</span>'; ytListasMsg(r.error || 'No pude leer tus listas de YouTube.', 0); return; }
+    YT_LISTAS = r.listas || []; YT_LISTAS_OK = new Set(r.elegidas || []);
+    ytListasPinta();
+    if(r.por_defecto && YT_LISTAS_OK.size) ytListasMsg('✔ Marqué por defecto la que tiene más vídeos: ' + ytListasNombres([...YT_LISTAS_OK]) + '. Cámbiala cuando quieras.', 10000);
+    else if(refrescar) ytListasMsg('✔ Listas actualizadas', 2500);
+  }catch(e){ res.innerHTML = '<span class="muted">No disponible</span>'; ytListasMsg('No pude hablar con el panel para leer tus listas.', 0); }
+}
+let _ytListasMsgT = null;
+function ytListasMsg(texto, ms){                       // un aviso pequeño junto al desplegable; con `ms` se borra solo
+  const el = document.getElementById('yt-listas-msg');
+  el.textContent = texto; clearTimeout(_ytListasMsgT);
+  if(ms) _ytListasMsgT = setTimeout(() => { el.textContent = ''; }, ms);
+}
+function ytListasPinta(){                              // las listas llegan de MÁS a MENOS vídeos: la de arriba es la de por defecto
+  const menu = document.getElementById('yt-listas-chips'), res = document.getElementById('yt-dd-resumen');
+  if(!YT_LISTAS.length){
+    res.innerHTML = '<span class="muted">Sin listas</span>'; res.title = '';
+    menu.innerHTML = '<div class="muted yt-dd-vacio">No tienes listas de reproducción en tu canal: créalas en YouTube Studio y pulsa ↻.</div>';
+    return;
+  }
+  menu.innerHTML = YT_LISTAS.map(l => `<label class="yt-dd-op${YT_LISTAS_OK.has(l.id) ? ' on' : ''}" title="${esc(l.titulo)} · ${l.n} vídeos${l.privacidad === 'private' ? ' · privada' : ''}">`
+      + `<input type="checkbox" value="${esc(l.id)}"${YT_LISTAS_OK.has(l.id) ? ' checked' : ''} onchange="ytListaMarca(this)">`
+      + `<span class="yt-dd-t">${esc(l.titulo)}${l.privacidad === 'private' ? ' 🔒' : ''}</span><span class="yt-dd-n">${l.n}</span></label>`).join('');
+  ytListasResumen();
+}
+function ytListasResumen(){                            // lo que se ve con el desplegable CERRADO: la lista marcada (y «+N» si hay más de una)
+  const res = document.getElementById('yt-dd-resumen'), sel = YT_LISTAS.filter(l => YT_LISTAS_OK.has(l.id));
+  if(!sel.length){ res.innerHTML = '<span class="muted">Ninguna</span>'; res.title = 'No se añadirá a ninguna lista'; return; }
+  res.innerHTML = `<span class="yt-dd-sel">${esc(sel[0].titulo)}</span>` + (sel.length > 1 ? `<b class="yt-dd-mas">+${sel.length - 1}</b>` : '');
+  res.title = sel.map(l => l.titulo).join(' · ');
+}
+async function ytListaMarca(el){
+  if(el.checked) YT_LISTAS_OK.add(el.value); else YT_LISTAS_OK.delete(el.value);
+  el.closest('.yt-dd-op').classList.toggle('on', el.checked);
+  ytListasResumen();
+  try{
+    const r = await (await fetch('/api/youtube/listas/elegidas', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({listas: [...YT_LISTAS_OK]})})).json();
+    ytListasMsg(r.ok ? (YT_LISTAS_OK.size ? '✔ Se recordará para los próximos' : '✔ Ninguna: no se añadirá a ninguna lista') : ('✖ ' + (r.error || 'no se pudo guardar')), r.ok ? 3500 : 0);
+  }catch(e){ ytListasMsg('✖ No se pudo hablar con el panel.', 0); }
+}
+// el desplegable se cierra al tocar fuera o con Esc, como cualquier lista desplegable
+document.addEventListener('click', ev => { const d = document.getElementById('yt-dd'); if(d && d.open && !d.contains(ev.target)) d.open = false; });
+document.addEventListener('keydown', ev => { const d = document.getElementById('yt-dd'); if(ev.key === 'Escape' && d && d.open) d.open = false; });
+function ytListasAviso(it){
+  const res = it.listas || [], mal = res.filter(x => !x.ok);
+  const nombre = id => (YT_LISTAS.find(l => l.id === id) || {titulo: id}).titulo;
+  if(!mal.length) return `<span class="yt-aviso ok" title="${esc(res.map(x => nombre(x.id) + (x.ya ? ' (ya estaba)' : '')).join(' · '))}">📚 En ${res.length} lista${res.length > 1 ? 's' : ''}</span>`;
+  return `<span class="yt-aviso" title="${esc(mal.map(x => nombre(x.id) + ': ' + x.error).join('\n'))}">⚠ No entró en ${mal.length} lista${mal.length > 1 ? 's' : ''}</span>`;
+}
+async function reListas(iid, el){
+  const old = el.textContent; el.textContent = '↻ añadiendo…'; el.disabled = true;
+  try{
+    const r = await (await fetch(`/publish-item/${iid}/listas`, {method: 'POST'})).json();
+    el.textContent = r.ok ? '✓ en las listas' : '✗ ' + String(r.error || ((r.listas || []).filter(x => !x.ok)[0] || {}).error || 'error').slice(0, 70);
+  }catch(e){ el.textContent = '✗ red'; }
+  el.disabled = false;
+  setTimeout(() => { el.textContent = old; pollPublish(); }, 3500);
+}
+async function rethumb(iid, el){
+  const old = el.textContent; el.textContent = '↻ subiendo…';
+  try{
+    const r = await (await fetch(`/publish-item/${iid}/rethumb`, {method:'POST'})).json();
+    el.textContent = r.ok ? '✓ miniatura' : '✗ ' + (r.error||'error');
+  }catch(e){ el.textContent = '✗ red'; }
+  setTimeout(()=>{ el.textContent = old; }, 4000);
+}
+function editSched(iid){
+  const it = PUB_ITEMS.find(x=>x.id===iid); if(!it) return;
+  let dv='', tv='18:00';
+  if(it.publish_at){ const d=new Date(it.publish_at);
+    dv=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    tv=d.toTimeString().slice(0,5); }
+  const ov = document.getElementById('yt-editor');
+  ov.querySelector('.ttl').textContent = it.state==='done' ? 'Editar vídeo programado' : 'Editar (aún en cola)';
+  ov.querySelector('#ed-title').value = it.title||'';
+  ov.querySelector('#ed-date').value = dv;
+  ov.querySelector('#ed-time').value = tv;
+  ov.querySelector('#ed-tags').value = (it.tags||[]).join(', ');
+  ov.querySelector('#ed-desc').value = it.description||'';
+  ov.querySelector('#ed-save').onclick = ()=>saveSched(iid);
+  ov.style.display = 'flex';
+}
+async function saveSched(iid){
+  const ov = document.getElementById('yt-editor');
+  const date = ov.querySelector('#ed-date').value, time = ov.querySelector('#ed-time').value;
+  let publish_at = null;
+  if(date && time){
+    const dt = new Date(date+'T'+time);
+    if(dt.getTime() > Date.now()+60000) publish_at = dt.toISOString();
+    else if(!confirm('Esa fecha ya pasó o es muy pronto. Se subirá/quedará PÚBLICO. ¿Seguir?')) return;
+  }
+  const body = {
+    title: ov.querySelector('#ed-title').value,
+    description: ov.querySelector('#ed-desc').value,
+    tags: ov.querySelector('#ed-tags').value,
+    publish_at
+  };
+  ov.querySelector('#ed-save').disabled = true;
+  const r = await (await fetch(`/publish-item/${iid}/edit`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})).json();
+  ov.querySelector('#ed-save').disabled = false;
+  if(!r.ok){ alert('No se pudo actualizar: '+(r.error||'')); return; }
+  ov.style.display = 'none';
+  pollPublish();
+}
+async function delSched(iid){
+  const it = PUB_ITEMS.find(x=>x.id===iid);
+  const msg = it && it.state==='done'
+    ? 'Esto BORRA el vídeo de YouTube (programado o no). ¿Seguro?'
+    : 'Quitar de la cola de subida. ¿Seguro?';
+  if(!confirm(msg)) return;
+  const r = await (await fetch(`/publish-item/${iid}/delete`, {method:'POST'})).json();
+  if(!r.ok) alert('Aviso: '+(r.error||'no se pudo borrar en YouTube'));
+  pollPublish();
+}
+
+async function pollPublish(){
+  try{
+    const items = await (await fetch(`/job/${JID}/publish-status`)).json();
+    PUB_ITEMS = items;
+    const box = document.getElementById('yt-status');
+    markScheduled(items);
+    if(!items.length){ box.innerHTML=''; return; }
+    box.innerHTML = '<h3 style="font-size:13px;margin:6px 0">Subidas</h3>' + items.map(it=>{
+      const st = it.state==='done'
+        ? (it.url ? `<a href="${it.url}" target="_blank">${it.url}</a> ` : '')
+          + (it.publish_at?('· programado '+fmtLocalDT(it.publish_at)):'· público ya')
+        : it.state==='error' ? `<span style="color:var(--bad)">${esc(it.error||'error')}</span>`
+        : it.state==='uploading' ? `subiendo… ${it.pct||0}%` : 'en cola';
+      return `<div class="m" style="padding:3px 0"><b>${esc(it.title)}</b> — ${st}</div>`;
+    }).join('');
+    if(items.some(it=>['queued','uploading'].includes(it.state))){
+      clearTimeout(ytPollTimer); ytPollTimer = setTimeout(pollPublish, 2500);
+    }
+  }catch(e){}
+}
+
+refresh();
+if(terminal) loadClips();
+</script>
+{% endblock %}

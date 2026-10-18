@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Versiones · {{ nombre }}{% endblock %}
+{% block body %}
+{% set estado_es = {'queued':'En cola','running':'Procesando','done':'Terminado','error':'Con error','cancelled':'Cancelado','paused':'En pausa'} %}
+<p><a href="{{ url_for('videos_page') }}">&larr; Mis vídeos</a></p>
+<h1>{{ nombre }}</h1>
+<p class="sub">Todas las versiones de este vídeo, una debajo de otra. Cada <b>mejora</b> parte de la versión que elijas y hace una nueva;
+  las anteriores no se tocan, así que siempre puedes volver a una anterior.</p>
+<div class="callout" style="display:inline-block;margin-bottom:18px">✨ Mejoras con IA usadas: <b>{{ usadas }} de {{ maximo }}</b>
+  {% if restantes > 0 %}· te quedan <b>{{ restantes }}</b>{% else %}· ya no quedan (los cortes a mano no cuentan){% endif %}</div>
+<button type="button" class="btn ghost sm" id="mul-btn" style="margin:0 0 18px 8px" onclick="mulAbre()"
+        title="Las muletillas que más repites en este vídeo y un par de consejos (sin IA: salen de la transcripción)">🗣️ Tus muletillas</button>
+<section class="card mul-card" id="mul-card" style="display:none"></section>
+
+<h2>Cómo le fue en YouTube</h2>
+<section class="card" id="metricas-card"></section>
+
+{% for v in versiones %}
+<article class="card ver" id="v{{ v.version }}" data-jid="{{ v.jid }}">
+  <div class="ver-cab">
+    <h2 style="margin:0">Versión {{ v.version }}</h2>
+    <span class="badge {{ 'cancelled' if v.sin_cambios else v.state }}">{{ 'Sin cambios' if v.sin_cambios else estado_es.get(v.state, v.state) }}</span>
+    <span class="ver-tipo">{% if v.tipo_v == 'mejora' %}✨ Mejora con IA{% elif v.tipo_v == 'cortes' %}✂️ Con tus cortes a mano{% elif v.tipo_v == 'primera' %}Análisis automático{% else %}Análisis nuevo (Reshuffle){% endif %}</span>
+    {% if v.duracion %}<span class="muted">· {{ (v.duracion // 60)|int }}:{{ '%02d' % ((v.duracion % 60)|int) }} min</span>{% endif %}
+    {% if v.reglas %}{# 📌 reglas permanentes del autor que leyó el director en ESE análisis (clipper/reglas.py) #}
+      <span class="badge reglas" title="El director leyó {{ v.reglas|length }} regla(s) permanente(s) tuya(s): {% for r in v.reglas %}• {{ r.texto }} {% endfor %}">📌 {{ v.reglas|length }} regla{{ '' if v.reglas|length == 1 else 's' }}</span>
+    {% endif %}
+    {% if v.vision %}{# «La IA ve el vídeo» (experimento): para comparar versiones con y sin la pasada #}
+      {% if v.vision.ok %}<span class="badge vista" title="Gemini {{ v.vision.nombre or 'Flash-Lite' }} miró la grabación ({{ v.vision.tramos }} tramos descritos) y el director editó sabiendo lo que se ve">👁 Visto por IA</span>
+      {% elif v.vision.apagada %}<span class="badge sin-vista" title="Editado solo con la transcripción (la opción «La IA ve el vídeo» estaba apagada)">🙈 Sin vista IA</span>
+      {% else %}<span class="badge error" title="{{ v.vision.motivo }}">👁✗ Vista IA falló</span>{% endif %}
+    {% endif %}
+    <span style="flex:1"></span>
+    <a class="btn ghost sm" href="{{ url_for('job_page', jid=v.jid) }}"
+       title="Publicar en YouTube, ver el registro en vivo, cancelar o reintentar">📺 Publicar / más</a>
+  </div>
+  {% if v.titulo %}<div class="muted" style="margin:-6px 0 10px" id="titulo-actual-{{ v.jid }}">{{ v.titulo }}</div>{% endif %}
+  {% set nm = v.nombres %}{% if nm and (nm.corregidas or nm.quitadas or nm.revisado == false) %}{# 🛡 nombres de lo que sale en pantalla (clipper/nombres.py) #}
+  <div class="callout {{ 'warn' if (nm.quitadas or nm.revisado == false) else 'info' }}" style="margin:0 0 10px">
+    <b>🛡 Nombres de lo que sale en pantalla</b>{% if nm.revisado == false %} — <b>no se pudieron revisar con la IA</b> ({{ nm.motivo or 'sin respuesta' }}); «Reintentar» lo vuelve a intentar.{% endif %}
+    {% for c in nm.corregidas %}<div>✏️ «{{ c.antes }}» → «<b>{{ c.despues }}</b>» <span class="muted">· {{ '%d:%02d' % ((c.t // 60)|int, (c.t % 60)|int) }}</span></div>{% endfor %}
+    {% for q in nm.quitadas %}<div>🚫 No salió «{{ q.texto }}» <span class="muted">· {{ '%d:%02d' % ((q.t // 60)|int, (q.t % 60)|int) }} · {{ q.motivo }}</span></div>{% endfor %}
+    {% if nm.quitadas %}<div class="hint">Solo sale lo que se puede confirmar. Si alguno es un nombre real, pídelo en una mejora («pon la tarjeta de …») y saldrá.</div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if v.tipo_v == 'mejora' %}
+  <div class="ver-nota"><div><b>Tu comentario:</b> «{{ v.comentario }}»</div>
+    {% if v.nota %}<div style="margin-top:4px"><b>Lo que hizo la IA:</b> {{ v.nota }}</div>{% endif %}</div>
+  {% endif %}
+
+  {% if v.state == 'done' and v.tiene_video %}
+    <video class="ver-video" id="vid-{{ v.jid }}" controls preload="metadata" poster="{{ v.poster }}" src="{{ v.video_url }}"></video>
+    <div class="ver-acciones">
+      <a class="btn descargar" href="{{ url_for('job_descargar', jid=v.jid) }}" title="Descargar esta versión">⬇ Descargar</a>
+      <a class="btn ghost" href="{{ url_for('editor_page', jid=v.jid) }}" title="Marcar un tramo y quitarlo (no gasta IA)">✂️ Editar / cortar</a>
+    </div>
+    {% if v.eventos_visuales or v.titulos or v.descripcion_yt %}
+    <details class="opciones" style="margin-top:12px"{{ ' open' if v.jid == ultima else '' }}>
+      <summary>🎬 Ritmo, títulos, miniatura y descripción de este vídeo</summary>
+      <div id="proinfo-{{ v.jid }}" style="margin-top:12px"></div>
+    </details>
+    {% endif %}
+    <div id="mejora-{{ v.jid }}"></div>
+    <div id="shorts-{{ v.jid }}"></div>
+    <div id="articulo-{{ v.jid }}"></div>
+    <div id="redes-{{ v.jid }}"></div>
+    <div id="carrusel-{{ v.jid }}"></div>
+  {% elif v.sin_cambios %}
+    <div class="callout warn"><b>🤔 La IA no cambió nada con tu comentario</b>, así que no se creó un vídeo nuevo (habría salido igual que el anterior).
+      {% if v.nota %}<div style="margin-top:4px"><b>Lo que la IA entendió:</b> {{ v.nota }}</div>{% endif %}
+      <div class="hint">No se te descontó ninguna mejora. Prueba a explicarlo con otras palabras o con el tiempo exacto que ves en el reproductor.</div></div>
+  {% elif v.state in ('queued', 'running', 'paused') %}
+    <div class="ver-proc"><div class="bar"><i id="bar-{{ v.jid }}" style="width:{{ v.pct or 3 }}%"></i></div>
+      <div class="muted" id="stage-{{ v.jid }}">{{ v.stage or 'En cola…' }}</div>
+      <div class="hint">Esto tarda más o menos lo que dura el vídeo. Puedes irte: la página se actualiza sola al terminar.</div></div>
+  {% else %}
+    <div class="callout bad">Esta versión no terminó bien{% if v.error %}: {{ v.error }}{% endif %}. Abre <a href="{{ url_for('job_page', jid=v.jid) }}">los detalles</a> para ver el registro y reintentar.</div>
+  {% endif %}
+</article>
+{% endfor %}
+
+<script src="{{ url_for('static', filename='mejorar.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='metricas.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='proinfo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='muletillas.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='articulo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='redes.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='posts.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='carrusel.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='shorts_pub.js') }}?v={{ ui_v }}"></script>
+<script>
+metricasCargaEn({{ base|tojson }}, 'metricas-card');
+
+// «🗣️ Tus muletillas» (static/muletillas.js): plegado; se carga al abrirlo la primera vez
+let mulCargado = false;
+async function mulAbre(){
+  const el = document.getElementById('mul-card');
+  const abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : '';
+  if(!abierto && !mulCargado) mulCargado = await muletillasCargaEn({{ base|tojson }}, 'mul-card');
+}
+const INFO = {{ {'versiones': versiones|length, 'siguiente': siguiente, 'maximo': maximo, 'restantes': restantes, 'en_marcha': en_marcha}|tojson }};
+const PUEDE = {{ puede|tojson }};   // {jid: motivo por el que NO se puede mejorar esa versión ('' = se puede)}
+const ULTIMA = {{ ultima|tojson }};
+// datos de cada versión para el «ritmo del vídeo» + «títulos, miniatura y descripción» de abajo (pedido del autor,
+// 2026-09-23: verlo aquí mismo, sin tener que ir a "Detalles" por cada versión)
+const VERSIONES = {{ versiones|tojson }};
+function verSeek(jid, t){
+  const v = document.getElementById('vid-' + jid);
+  if(v){ v.currentTime = t; v.play(); }
+}
+async function verUsaTitulo(el, jid){
+  const txt = el.dataset.txt, arch = el.dataset.arch;
+  el.style.opacity = .5;
+  try{
+    const r = await (await fetch(`/job/${jid}/titulo`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({archivo: arch, titulo: txt})})).json();
+    if(r.ok){
+      const t = document.getElementById('titulo-actual-' + jid); if(t) t.textContent = txt;
+      const vid = document.getElementById('vid-' + jid); if(vid && r.miniatura) vid.poster = `/salida/${jid}/${encodeURIComponent(r.miniatura)}?v=${Date.now()}`;
+    }
+  }catch(e){}
+  el.style.opacity = '';
+}
+document.querySelectorAll('.ver').forEach(art => {
+  const jid = art.dataset.jid;
+  const v = VERSIONES.find(x => x.jid === jid);
+  const proHueco = document.getElementById('proinfo-' + jid);
+  if(v && proHueco){
+    proHueco.innerHTML = ritmoTablaHTML(v.eventos_visuales, v.duracion, ev => `verSeek('${jid}', ${ev.t})`, v.ritmo)
+      + titulosDescripcionHTML({titulos_sugeridos: v.titulos, titulos_anteriores: v.titulos_anteriores,
+                                miniatura_prompts: v.miniatura_prompts, miniatura_titulares: v.miniatura_titulares,
+                                descripcion: v.descripcion_yt, archivo: v.archivo,
+                                jid: jid}, () => `verUsaTitulo(this, '${jid}')`);
+  }
+  // los Shorts de esa versión, abajo (el autor, 2026-09-25)
+  const shHueco = document.getElementById('shorts-' + jid);
+  if(v && shHueco) shHueco.innerHTML = shortsHTML(v, jid);
+  // y debajo, «📝 Crear artículo» para tu web (el autor, 2026-09-26: «justo por la parte donde están los shorts»)
+  if(v) articuloSlot(jid, document.getElementById('articulo-' + jid));
+  // y «📣 Redes sociales»: una publicación por red, para copiar y pegar (el autor, 2026-09-27)
+  if(v) redesSlot(jid, document.getElementById('redes-' + jid));
+  // y «🖼️ Carrusel» para Instagram y TikTok, debajo (el autor, 2026-10-05)
+  if(v) carruselSlot(jid, document.getElementById('carrusel-' + jid));
+  // la tarjeta «¿Quieres mejorarle algo?»: grande y abierta en la última versión; en las demás, plegada
+  const hueco = document.getElementById('mejora-' + jid);
+  if(!hueco) return;
+  const info = {...INFO, puede: !PUEDE[jid], motivo: PUEDE[jid] || ''};
+  if(jid === ULTIMA){ hueco.innerHTML = mejoraCardHTML(jid, info, true); }
+  else { hueco.innerHTML = `<details class="opciones" style="margin-top:10px"><summary>✨ Mejorar a partir de esta versión</summary>${mejoraCardHTML(jid, info, false)}</details>`; }
+});
+// versiones procesándose: barra y estado en vivo; al terminar, se recarga sola
+const CURSO = [...document.querySelectorAll('.ver-proc')].map(e => e.closest('.ver').dataset.jid);
+if(CURSO.length){
+  setInterval(async () => {
+    for(const jid of CURSO){
+      try{
+        const j = await (await fetch('/api/job/' + jid)).json();
+        const b = document.getElementById('bar-' + jid), s = document.getElementById('stage-' + jid);
+        if(b) b.style.width = Math.max(3, j.pct || 0) + '%'; if(s) s.textContent = j.stage || '';
+        if(['done', 'error', 'cancelled'].includes(j.state)) location.reload();
+      }catch(e){}
+    }
+  }, 3000);
+}
+if(location.hash){ const el = document.querySelector(location.hash); if(el) el.scrollIntoView({block: 'start'}); }
+</script>
+{% endblock %}

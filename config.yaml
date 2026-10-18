@@ -1,0 +1,556 @@
+# ============================================================
+#  CONFIG — edita esto y nada más para el uso normal
+# ============================================================
+
+# --- Transcripción -------------------------------------------------
+transcribe:
+  # "local"  -> faster-whisper en tu máquina (gratis, necesita GPU para ir rápido)
+  # "groq"   -> API de Groq (~$0.04/hora, no necesitas GPU)
+  backend: local
+
+  model: large-v3-turbo    # large-v3 (el más preciso, pero lento sin GPU NVIDIA) | large-v3-turbo (casi igual y mucho más rápido) | medium (para PCs modestos)
+  device: auto             # auto | cuda | cpu
+  language: es
+
+  # Vocabulario que le sesgas a Whisper. Mete nombres de
+  # herramientas, marcas, siglas y jerga propia del canal. OJO: Whisper solo lo aplica en su
+  # PRIMERA ventana de 30 s (medido 2026-09-24). Pasarlo a todas («hotwords»)
+  # se comía frases enteras: por eso las CIFRAS se revisan aparte (abajo).
+  # Tras transcribir, cada cifra se vuelve a escuchar con este vocabulario
+  # (unos segundos): «tres coma seis» sale «3,6» y no «36». Una vez por grabación.
+  revisa_cifras: true
+  # (Los términos de tu canal —tu jerga, tus herramientas y marcas— se escriben en el asistente «Nuevo canal» / «Editar canal» y se añaden aquí solos al transcribir.)
+  initial_prompt: >
+    Vídeo en español.
+
+# --- Salida --------------------------------------------------------
+output:
+  folder: videos          # carpeta donde caen los vídeos: video-edit-pro/<folder>/<video>/
+  width: 1920
+  height: 1080           # tope de resolución: 1080p aunque la grabación sea 1440p o más
+  fps: 60                # fluido (cursor/scroll). Vídeos PRO nunca sube más de los fps que
+                         # trae la grabación (si grabas a 30, sale a 30). 60 exige nivel
+                         # H.264 4.2 (ya se ajusta solo en render.py)
+  crf: 20                # 18=mejor calidad/más pesado, 23=más liviano
+  preset: medium         # ultrafast..veryslow (solo por CPU: la GPU usa un preset propio)
+  audio_bitrate: 192k
+
+  # Renderiza por CPU o por GPU (pedido del autor, 2026-09-22, pensando también en abrir esto a
+  # gente con máquinas distintas): "auto" usa la GPU si hay una NVIDIA que ffmpeg sepa aprovechar
+  # (mucho más rápido) y si no, cae a CPU solo. "gpu"/"cpu" fuerzan una — si pides "gpu" y no hay,
+  # se avisa en el log y se usa la CPU igual (nunca rompe el render). Se elige en el panel, en
+  # «Opciones» de Mis vídeos; se aplica solo, sin volver a preguntar en cada mejora/edición.
+  motor: auto
+
+  # Entrega fluida: keyframe cada N segundos + tope de bitrate para que no
+  # haya picos que traben la reproducción.
+  gop_seconds: 2
+  maxrate: 12M
+  bufsize: 16M
+
+  # Nivelado de audio (loudnorm EBU R128, 2 pasadas). -14 LUFS / -1.5 dBTP =
+  # estándar de YouTube.
+  normalizar_audio: true
+  loudness_lufs: -14
+  true_peak_db: -1.5
+  loudness_range: 11
+
+# --- Subtítulos (apagados por defecto: las tarjetas ya llevan el texto) ---
+subtitles:
+  font: "Montserrat ExtraBold"
+  words_per_line: 6
+
+# --- Censura de palabrotas --------------------------------------------
+# Cuando en un vídeo se dice una de estas palabras:
+#   - el AUDIO se silencia en ese instante (usando los tiempos por palabra
+#     de Whisper), con un pequeño margen a cada lado.
+#   - el SUBTÍTULO (si está activo) muestra la 1ª letra + asteriscos.
+censura:
+  enabled: false
+  palabras: []          # p. ej. [palabra1, palabra2]; con enabled: true el audio se silencia en esas palabras
+  pad: 0.07             # segundos de margen a cada lado del silencio
+  modo: silencio
+
+
+# --- Transiciones (sonido en cortes/cambios de cámara/tarjetas) -------
+# DOS sonidos, no uno: un "whoosh" cuando la cámara cambia de encuadre DE
+# VERDAD (empieza una escena nueva) y un sonido más suave y "etéreo" cuando
+# se quitó una pausa o una toma repetida SIN cambiar de cámara, y en cada
+# tarjeta. Los dos se calibran contra TU VOZ (rel_voz_db) y se sincronizan
+# para que su golpe real (no su inicio) caiga exacto en el instante. El
+# whoosh se sintetiza una vez si no hay `archivo`; el etéreo SIEMPRE se
+# sintetiza (no tiene archivo propio).
+# 💡 IDEAS DE VÍDEOS (pestaña «💡 Ideas»): una TABLA de ideas con datos reales de tu canal y de YouTube. UNA petición al mejor Flash, solo con tu clic y
+# NUNCA si hoy quedan menos de `minimo_restantes` peticiones de los mejores modelos (lo primero es editar bien los vídeos). El «↻» de cada idea gasta UNA petición
+# de Flash-Lite, con su tope por día. El PERFIL de cada canal (de qué trata, a qué públicos, qué búsquedas mirar) lo configura la persona la primera vez que
+# abre «Ideas» (asistente) y se guarda en work/ideas/perfil_<canal>.json: aquí solo van los topes.
+ideas:
+  activo: true
+  minimo_restantes: 8
+  max_por_dia: 2
+  busquedas_por_idioma: 4
+  refrescos_max_dia: 30     # «↻» de una idea: 1 petición a Flash-Lite cada una (500 al día); tope por día
+  minimo_lite: 150          # y nunca con menos de 150 peticiones de Flash-Lite hoy (lo primero es editar los vídeos)
+  dias_tendencia: 30
+  dias_trafico: 90          # búsquedas y vídeos relacionados de YouTube Analytics: los últimos N días
+  canales_relacionados: 5   # canales que YouTube recomienda junto a los tuyos, para buscar sus vídeos que rinden por encima
+  canales_referencia: []    # ids de canales que quieras vigilar siempre (UC…)
+  outlier_x: 2.0            # «rinde por encima» = al menos 2× la mediana de vistas de su canal
+
+transiciones:
+  sonido: true
+  rel_voz_db: -18        # los sonidos van este nº de dB por debajo de TU VOZ
+  volumen_fallback: 0.3  # si no se puede medir la voz (tramo sin habla), usa este nivel fijo
+  pop_db: -3             # las alertas de SUSCRÍBETE y LIKE suenan con un «pop» (no con el etéreo de las tarjetas):
+                          # va N dB por debajo, porque a igual volumen medio su golpe pica ~3,4 dB más.
+                          # `pop_archivo: "assets/pop.wav"` = usar un sonido tuyo en vez del sintetizado
+  archivo: "assets/whoosh.wav"
+  musica_rel_voz_db: -20 # la música de fondo (si está activa) va este nº de dB bajo tu voz
+  musica_fade_seg: 8     # crescendo/decrescendo de 1dB por segundo (8 = arranca 8dB por
+                          # debajo del nivel normal y sube 1dB/s; igual de simétrico al salir)
+  modo: voz               # los vídeos largos calibran contra tu voz, sin agachar el audio
+  visual: "no"            # sin destello entre tramos (eso es cosa de Shorts)
+  visual_seg: 0.12
+  micro_fade_audio_ms: 10 # Vídeos PRO: fundido de audio de N ms a cada lado de un corte de
+                          # verdad (evita el "clic" al empalmar dos puntos de la onda; no
+                          # cambia la duración ni la sincronía). 0 = apagado.
+  ken_burns_zoom: 0.06    # Vídeos PRO: acercamiento MÁXIMO (al final del tramo) en las escenas
+                          # "cara"/"pantalla"/"pantalla_zoom" que tengan movimiento suave. 0.06 =
+                          # 6% de zoom a lo largo de TODA la escena. 0 = apagado del todo (sin
+                          # zoom tampoco hay deriva: no queda margen libre para moverse).
+  ken_burns_pan: 0.015    # deriva lateral máxima, como fracción del ancho de salida. Se recorta
+                          # sola a lo que el zoom deja libre (con 6%: ~0.028) para que la imagen
+                          # nunca se salga del cuadro. 0 = solo zoom, sin deriva.
+
+# --- Copia de seguridad de lo que NO va a Git (ver backup.py y "COPIA DE SEGURIDAD.cmd") ---
+backup:
+  carpeta: ""             # vacío = OneDrive\Copias de seguridad\video-edit-pro (o Documentos si no hay OneDrive)
+  conservar: 8            # cuántas copias mantener; las más viejas se borran
+
+# --- Scoring con IA (el director y la detección de temáticas usan Gemini) --
+ai:
+  enabled: true
+  model: gemini-3.1-flash-lite     # el que usan el Generador por temática y demás
+
+  # VÍDEOS PRO — plan de contingencia del director. Se prueban EN ORDEN (el mejor
+  # primero) y se usa el primero que responda; el panel te dice con cuál
+  # funcionó. Si uno está saturado (503) o ya no existe (404) pasa al
+  # siguiente al instante; si NINGUNO responde, el vídeo NO se renderiza y sale
+  # la tarjeta roja "NO analizado por Gemini" para darle Reshuffle. Solo modelos
+  # Flash (baratos): un análisis gasta ~10 mil tokens y los intentos que fallan
+  # por saturación no cuestan nada. Verificados con tu clave el 2026-09-18
+  # (los "Flash" grandes estaban saturados ese día; los "lite" respondían).
+  # OJO: que un modelo salga en la lista de Google NO significa que sirva
+  # (gemini-2.5-flash aparece y da 404) — por eso hay cadena.
+  # El plan se pide con ESQUEMA (response_schema): Gemini está obligado a devolver el JSON con la forma
+  # exacta (adiós al «Extra data» de 3.1-flash-lite y a los campos que faltan). Si un modelo lo
+  # rechaza, se repite ese modelo sin esquema. Probado con 3.6 Flash, 3.5 Flash-Lite y flash-lite-latest.
+  director_esquema: true
+  # LA CADENA DE MODELOS SE ARMA SOLA (clipper/modelos.py): se le pregunta a Google qué modelos ofrece, se quedan los Flash y Flash-Lite de la
+  # versión 3 en adelante y se ordenan del mejor al peor (Flash antes que Flash-Lite y, dentro de cada uno, la versión más nueva primero: una
+  # «preview» compite por su número). El modelo de mañana entra solo. Al que ahora está saturado, agotado por hoy o no disponible se le aparta un rato. Nadie tiene
+  # que tocar esta lista: solo vale como PLAN B si no se puede preguntar a Google (sin red o sin clave).
+  modelos_auto: true
+  familias: [flash, lite]      # «pro» no: no es gratis
+  version_minima: 3            # nada anterior a Gemini 3
+  incluir_preview: true        # las generaciones nuevas salen primero como «preview»: false = solo modelos estables
+  descubrir_cada_horas: 12     # cada cuánto se vuelve a preguntar a Google (y siempre que se analiza un vídeo con la búsqueda caducada)
+  enfriamiento_min: 10         # minutos que se aparta a un modelo saturado antes de volver a probarlo
+  director_modelos:            # plan B (2026-09-21): el orden que salió de la búsqueda
+    - gemini-3.8-flash
+    - gemini-3.7-flash
+    - gemini-3.6-flash
+    - gemini-3.5-flash
+    - gemini-3.5-flash-lite
+    - gemini-3.1-flash-lite
+    - gemini-flash-lite-latest
+  director_reintento_seg: 90   # cuánto se insiste en EL MISMO modelo (espera creciente entre intentos) si sale saturado, antes de pasar al siguiente
+  director_pasadas: 2          # vueltas a la cadena entera (con 45 s de pausa) antes de rendirse
+  director_timeout_seg: 100    # tope por intento (un modelo saturado tarda hasta ~110 s en fallar)
+  # Si aun así TODOS los modelos siguen saturados, el trabajo no se para esperando tu «Reintentar»: vuelve a
+  # intentarlo SOLO a estos minutos (hasta ~1 h). Los intentos saturados no gastan cuota del día. [] = apagado.
+  reintento_auto_min: [10, 20, 30]
+
+# --- VIDEOS HORIZONTALES LARGOS POR TEMATICA -------------------------
+# "Generador" (por temática, un directo -> varios vídeos) y "Vídeos PRO"
+# (un archivo ya grabado -> un vídeo editado de punta a punta).
+videos:
+  ancho: 1920
+  alto: 1080
+  crf: 20
+  subtitulos: false      # en horizontal suelen estorbar; ponlo a true si los quieres
+  subs_font_size: 54
+  subs_margin_v: 70
+  subs_words_per_line: 6
+
+  # --- detección de temáticas (modo "Generador") ---
+  bloque_seg: 90         # el directo se parte en tramos de este tamaño
+  bloques_por_llamada: 40  # tramos que se le mandan a Gemini de una vez
+  chars_por_bloque: 700  # texto de cada tramo que ve la IA
+  hueco_max_seg: 180     # dos tramos del mismo tema más juntos que esto = uno solo
+
+  # --- límites de cordura (la temática manda DENTRO de esto) ---
+  duracion_min_seg: 300    # 5 min: menos que esto no es un vídeo, es un clip
+  duracion_max_seg: 1200   # 20 min
+  tramo_min_seg: 40        # un tramo suelto más corto que esto no cuenta
+  max_por_directo: 5
+  cobertura_max: 0.40      # un tema que cubre más del 40% del directo se
+                           # descarta: no es un tema, es la etiqueta comodín
+
+  # Red de seguridad para Vídeos PRO: si el director propone cortar (relleno)
+  # más de este % del vídeo, por seguridad me quedo solo con los recortes más
+  # chicos hasta bajar del tope.
+  recortes_max_pct: 0.5
+  mejoras_max: 3              # cuántas veces se puede pedir «mejorar» con la IA sobre un mismo vídeo (versión 1 + 3 mejoras)
+  recortes_max_pct_mejora: 0.85   # en una mejora el autor puede pedir quitar mucho más: su tope de recorte
+  reglas_max: 12              # 📌 reglas permanentes del director por canal (activas + en pausa): con demasiadas deja de hacerles caso
+
+  # --- recursos de EDICIÓN propios ---
+  subs_preset: limpio      # nada de karaoke palabra a palabra en horizontal
+  subs_uppercase: false
+  transicion: true
+  transicion_db: -16
+  censura: true            # silenciar palabrotas: cámbialo si no lo quieres
+  thumb_saturacion: 1.18
+  thumb_borde_px: 6
+
+  # Al elegir qué temas se convierten en vídeo (modo "Generador"), no gana el
+  # que más minutos tiene: gana el que se SOSTIENE.
+  peso_coherencia: 0.35
+
+  # Capítulos de YouTube en la descripción, con los tiempos del vídeo YA
+  # montado.
+  capitulos: true
+
+  # --- entrada y salida del vídeo del modo "Generador" (y sus cartelas
+  # --- intro/outro de abajo). Vídeos PRO usa las suyas: pro_fade_* ---------
+  fade_in_seg: 3          # el audio sube de cero al nivel normal en 3 s
+  fade_out_seg: 3         # y baja en 3 s al final
+  # Vídeos PRO: tu primera frase es el gancho y tu despedida lo último que se
+  # oye — con los 3 s de arriba el gancho sonaba lejos y el «chao» se apagaba
+  # (2026-09-24). Entra en 0,12 s, dentro del aire que deja arranque.preroll
+  # antes de tu primera sílaba, y sale en 0,6 s como mucho, siempre DESPUÉS de
+  # tu última palabra (nunca encima).
+  pro_fade_in_seg: 0.12
+  pro_fade_out_seg: 0.6
+  # Arranque y final de Vídeos PRO medidos en el AUDIO (clipper/voz.py, sin
+  # Gemini): el vídeo empieza justo antes de tu primera sílaba (los tiempos de
+  # Whisper fallan hasta ~1 s al salir de un silencio: se comían tu primera
+  # palabra o dejaban silencio delante), acorta las pausas largas de los
+  # primeros segundos, quita el silencio largo del final y corta las tomas
+  # falsas del arranque cuando repites el inicio. activo: false = como antes.
+  arranque:
+    activo: true
+    preroll: 0.15         # aire antes de tu primera sílaba
+    pausa_max: 1.0        # en los primeros 8 s, una pausa más larga se acorta a ~0,3 s
+    cola: 0.7             # aire tras tu última palabra (si al final sobran más de 1,2 s de silencio)
+  # En TODO el vídeo (2026-09-24, también medido en el audio y sin peticiones
+  # nuevas a Gemini): las pausas de DUDA a media frase (tras «de», «la»,
+  # «que», «eh»… y sin nada moviéndose en pantalla) se dejan en 0,3 s. Las
+  # que son a propósito (suspense antes de un dato) las marca el director en
+  # la misma llamada de siempre y no se tocan; las pausas ENTRE frases nunca
+  # las toca el código. Solo en análisis nuevos: un plan de antes sigue igual.
+  pausas:
+    activo: true
+    umbral_seg: 0.7       # a media frase, más largas que esto…
+    deja_seg: 0.3         # …se quedan en esto
+  # Los cortes de la IA se eligen con los tiempos de Whisper, que apunta el
+  # final de las palabras hasta ~0,4 s antes de tiempo: 19 de 26 cortes de un
+  # vídeo real se comían la última sílaba. true = cada borde se lleva al
+  # silencio real más cercano (como mucho 0,7 s; tus cortes a mano no se tocan).
+  bordes_cortes: true
+  # «La IA ve el vídeo» (⚙️ Opciones del panel; 2026-09-24, experimento del autor
+  # para comparar con y sin): Gemini Flash-Lite (500 al día, no toca las 20 de
+  # los mejores) mira una copia pequeña de la grabación (1 fotograma/s, sin
+  # audio) y le cuenta al director qué se ve en cada tramo. Una vez por
+  # grabación (work/<vídeo>--pro/vision.json); las mejoras reusan lo que vio.
+  ia_ve_video: false
+  # 💾 Espacio (el autor, 2026-10-04): cada vídeo ocupa ~2 GB en tu PC (la grabación de OBS con su cámara, la copia en inbox/, el vídeo editado con sus Shorts y
+  # las cachés). El 🗑 de «Mis vídeos» borra del todo lo de un vídeo MENOS tus grabaciones de OBS (D:/Videos: son tu respaldo y NUNCA se tocan). Con
+  # `limpieza_auto: true` el programa lo hace solo, cada día, con los vídeos que llevan en YouTube más de `limpieza_dias` días (queda el esqueleto en el
+  # Historial; nunca un vídeo sin publicar) y borra las cachés regenerables de lo ya publicado. Apagado por defecto. Se cambia desde «💾 Espacio» en Mis
+  # vídeos (clipper/espacio.py).
+  limpieza_auto: false
+  limpieza_dias: 7
+  intro: true             # cartela animada al principio
+  intro_seg: 5
+  intro_texto:
+    - "Este vídeo salió de un DIRECTO"
+    - "Suscríbete para verlos completos"
+  outro: true             # cartela animada al final
+  outro_seg: 6
+  outro_texto:
+    - "¡Gracias por verlo!"
+    - "Suscríbete y dale like"
+    - "Nos vemos en el próximo"
+
+  # --- EL DIRECTOR (clipper/director.py) ---------------------------------
+  # Editor de IA: recorta relleno, decide cámara/pantalla, pone tarjetas en
+  # vez de subtítulos, sugiere imágenes. Activo por defecto en modo "Vídeos
+  # PRO"; en el "Generador" por temática queda apagado (ver comentario en
+  # pipeline.py: el plan del director está pensado para editar un vídeo de
+  # una pieza, no un tramo suelto de un directo).
+  director_activo: false
+
+  # Vídeos PRO: quema de verdad las tarjetas del plan del director en el
+  # vídeo (clipper/tarjetas.py + overlay en render.py).
+  tarjetas_activo: true
+  # Ninguna tarjeta (ni imagen, ni suscríbete/like) en los primeros ni en los últimos N segundos del
+  # vídeo (el autor, 2026-09-27: «queda como raro»). 0 = sin regla. En clips de menos de 60 s no se aplica.
+  tarjetas_margen_seg: 5
+
+  # Igual que tarjetas_activo, pero para las imágenes ilustrativas del
+  # director (campo "imagenes" — analogías, objetos concretos que no están
+  # en pantalla). Se traen de Openverse (gratis, sin API key, solo
+  # licencias que permiten uso comercial Y modificación) — si Openverse no
+  # responde, esa imagen se omite sola, nunca tumba el render.
+  imagenes_activo: true
+
+  # ILUSTRACIONES ANIMADAS (clipper/ilustraciones.py): la cuarta acción junto a cambios de escena,
+  # tarjetas y suscríbete. Un símbolo con movimiento (lupa, gráfica que sube, cohete, candado…),
+  # dibujado por código con los colores de la marca, sale arriba a la derecha cuando la explicación
+  # es MUY visual. El director (Gemini) elige qué símbolo de la biblioteca y cuándo; estas reglas
+  # duras deciden cuáles sobreviven. Se ve y se prueba en el panel: /ilustraciones.
+  ilustraciones_activo: true
+  ilustraciones:
+    max_por_minuto: 2.0       # tope de densidad (un vídeo de 10 min: como mucho ~20)
+    separacion_min_seg: 12    # entre el inicio de una y el de la siguiente
+    min_inicio_seg: 1.5       # ninguna en el arranque
+    duracion: 3.4             # segundos en pantalla si el director no dice otra cosa
+    tam_px_1080: 400          # lado del cuadro (px) para un lienzo de 1080 de alto
+    sonido: false             # true = el mismo sonido etéreo suave de las tarjetas al entrar
+
+  # CTA de suscripción: se añade SOLA a todo Vídeo PRO al X% del vídeo ya
+  # montado — no depende de que el director la pida. El texto se puede
+  # personalizar por canal con "cta_suscribete: {texto, extra, duracion}"
+  # dentro de videos.canales.<canal> (si no, usa el texto por defecto).
+  # ADEMÁS sale una vez por cada mención real de "suscríbete" en la
+  # transcripción (detectado por texto, no por IA) — hasta suscribete_max
+  # en total. Nunca dos tarjetas de suscríbete a menos de
+  # suscribete_separacion_seg entre sí (2 min, pedido del autor el 2026-09-24;
+  # antes 30 s y salían dos casi seguidas). Si lo pides tú a menos de eso
+  # de la del X%, gana la tuya: la del X% no sale (pipeline._puestos_suscribete).
+  suscribete_activo: true
+  suscribete_pct: 0.6
+  suscribete_max: 3
+  suscribete_separacion_seg: 120
+
+  # CTA de «dale like»: igual de automática que la de suscripción, pero UNA sola (no detecta
+  # menciones en la transcripción) al Y% del vídeo — pedido del autor (2026-09-23) para incentivar
+  # el like en TODOS los vídeos. Personalizable por canal con "cta_like: {texto, extra, duracion}"
+  # dentro de videos.canales.<canal> (si no, usa el texto por defecto). Fondo dorado (no naranja,
+  # como la de suscribirse) con un pulgar arriba dibujado a mano (`clipper/tarjetas._like`).
+  like_activo: true
+  like_pct: 0.8
+
+  # Escenas demasiado largas sin cambio de plano (el autor, 2026-09-25: 3,4 min seguidos de pantalla): pasado esto, el
+  # programa mete un cambio corto (5-12 s) ENTRE FRASES — en pantalla: tu cara si no pasa nada en pantalla, o un zoom
+  # que enseña todo lo que hace el ratón; en tu cara: la pantalla (pipeline.parte_escenas_largas). 0 = apagado.
+  escena_max_seg: 60
+
+  # RITMO del vídeo (el autor, 2026-09-25, tras medir un vídeo de Alex Hormozi: 11 cambios por minuto y casi nunca más de 15 s
+  # sin que pase nada; los suyos tenían tramos de hasta 1 min con el mismo plano). PALABRAS CLAVE: 1-3 palabras en grande,
+  # abajo en el centro, que salen justo cuando las dices (las propone el director en su llamada de siempre; en un plan de
+  # antes, las cifras y las etiquetas SEO que dices). El METRÓNOMO las reparte para que no haya tramos muertos de más de
+  # max_sin_cambio_seg y el vídeo suba hacia objetivo_por_min (fuera de las demostraciones en pantalla, que ya se mueven).
+  # Nunca encima de una tarjeta, de una escena «explicativa» ni de una demostración; sin sonido (clipper/ritmo.py).
+  ritmo:
+    activo: true
+    max_sin_cambio_seg: 15
+    objetivo_por_min: 10
+    palabras_activo: true
+    palabras_por_codigo: true     # cifras y etiquetas sacadas de la transcripción (para planes sin palabras de la IA)
+    max_por_min: 6                # palabras clave como mucho en cualquier minuto
+    separacion_seg: 4             # entre el inicio de una y el de la siguiente
+    pedir_para_planes_viejos: true  # un plan de antes sin palabras de la IA: 1 petición a Flash-Lite (se guarda en el plan)
+
+  # 🎯 ANCLAJE (el autor, 2026-10-11: «la animación sale 4-5 s antes de que lo mencione… como máximo 1-2 s antes»): cada tarjeta, ilustración,
+  # imagen, palabra clave y escena sale cuando DICES lo que muestra (clipper/anclaje.py): por la cita que el director copia de la transcripción
+  # y, si no, por el texto del propio elemento. Tarjetas, ilustraciones e imágenes entran `adelanto_seg` ANTES de la palabra; el resto, en ella.
+  anclaje:
+    activo: true
+    adelanto_seg: 0.5         # 0 = justo en la palabra; el autor pidió entre 1 y 2 s como MUCHO antes
+    ventana_seg: 12           # se busca hasta tantos s DESPUÉS del segundo que dio la IA (llega temprano) y 5 antes
+
+  # ESCENAS A PANTALLA COMPLETA (el autor, 2026-09-26: «me encanta… implementalo»): la pantalla entera con una ilustración grande
+  # y la frase clave, tu voz debajo. Especiales pero AL MENOS UNA por vídeo; fondos alternados en orden: 1.ª naranja, 2.ª
+  # crema, 3.ª naranja… Las marca el director en su llamada de siempre; un plan de antes usa la mejor de sus ilustraciones
+  # de la esquina. Nunca encima de una tarjeta, una imagen, una escena «explicativa» ni de una demostración en pantalla.
+  escenas:
+    activo: true
+    minimo: 1                 # al menos estas por vídeo (si caben)
+    cada_seg: 150             # y como mucho una cada 2,5 min (separadas eso entre sí)
+    duracion: 6               # segundos en pantalla (entre 4,5 y 7,5)
+    lento: 2                  # la animación de la ilustración tarda el doble que en la esquina
+
+  # Shorts verticales sacados del vídeo YA editado (el autor, 2026-09-25): se crean solos al final de cada render y salen abajo
+  # del todo en la página del vídeo. 1 petición al mejor Flash por versión NUEVA (elegir) + 1 a Flash-Lite (segunda
+  # opinión a ciegas); «Reintentar» no gasta. Duración libre, 15 s-2 min, máximo 3 (clipper/shorts.py). false = sin Shorts.
+  shorts_activo: true
+
+  # Las 5 etiquetas SEO de cada vídeo (hashtags en la descripción y el campo «tags» al publicar): las pide el director en su
+  # llamada de siempre; un plan de antes las pide UNA vez a Flash-Lite. false = no pedirlas para planes viejos.
+  tags_activo: true
+
+  # Música de fondo (EXPERIMENTAL — investigado y probado, pero apagado por
+  # defecto: pruébalo primero en un vídeo y confirma que te gusta el
+  # resultado antes de dejarlo activo para todos).
+  #
+  # Fuente PREFERIDA: musica_carpeta — pon ahí tus propias canciones ya
+  # descargadas (p. ej. de la Librería de Audio de YouTube: no tiene API
+  # pública, así que se bajan a mano una vez y ya). Cada vídeo las encadena
+  # en un orden random DISTINTO, repitiendo el ciclo si hace falta para
+  # cubrir el vídeo entero. Ruta relativa a la carpeta del proyecto, o
+  # absoluta si prefieres tenerlas en otro lado.
+  #
+  # Si esa carpeta no existe o está vacía, cae automáticamente a Openverse
+  # (gratis, sin API key, misma licencia comercial que las imágenes
+  # ilustrativas) usando musica_terminos como búsqueda.
+  musica_activo: true
+  musica_carpeta: "musica_fondo"
+  # Solo canciones ESTABLES de fondo (2026-09-24): cada canción de la carpeta se
+  # mide una vez y las que tienen un «drop», un subidón/bajón fuerte o un
+  # «break» casi en silencio no se usan (el log dice cuáles y por qué). Para ver
+  # la tabla de tu carpeta: python -m clipper.musica. false = todas, como antes.
+  musica_solo_estables: true
+  musica_terminos:
+    - "upbeat corporate background"
+    - "energetic ambient instrumental"
+
+  # Materiales/Links de la descripción: cuando una tarjeta "herramienta"
+  # nombra algo de esta lista, sale con su URL real. Si menciona una
+  # herramienta que NO está aquí, sale solo el nombre (sin link) — nunca se
+  # le pide a la IA que invente una URL. Amplía esta lista con el tiempo,
+  # según qué vayas mencionando en tus vídeos.
+  herramientas_conocidas:
+    "Claude": "https://claude.ai"
+    "ChatGPT": "https://chatgpt.com"
+    "Gemini": "https://gemini.google.com"
+    "Visual Studio Code": "https://code.visualstudio.com"
+    "VS Code": "https://code.visualstudio.com"
+    "GitHub": "https://github.com"
+    "Cursor": "https://cursor.com"
+    "Cloudflare": "https://www.cloudflare.com"
+    "Figma": "https://www.figma.com"
+    "Notion": "https://www.notion.so"
+    "n8n": "https://n8n.io"
+    "Make": "https://www.make.com"
+    "Zapier": "https://zapier.com"
+
+  # --- CANALES de Vídeos PRO ---------------------------------------------
+  # Cada canal trae su propio contexto para el director (tono, audiencia,
+  # de qué habla). Elegir un canal en el panel sustituye a escribir el
+  # contexto a mano cada vez.
+  canales:
+    # Aquí NO se crean canales a mano: se crean desde el panel («➕ Nuevo canal») y viven en canales/<nombre>.yaml.
+    # Este es solo un canal de EJEMPLO (con datos inventados) para que el programa funcione desde el primer minuto y se vea
+    # qué se puede configurar. En cuanto creas el tuyo, el de ejemplo deja de salir en las listas.
+    ejemplo:
+      nombre: "Mi canal (ejemplo)"
+      ejemplo: true
+      contexto: >
+        Canal de ejemplo sobre un tema cualquiera. Audiencia: personas que quieren aprender paso a paso. Tono cercano y
+        directo. El presentador explica combinando su pantalla y su cámara, en una esquina.
+      subtitulos: false
+      enlaces:
+        web: "https://tu-sitio.example"
+        youtube: "https://www.youtube.com/@tu-canal"
+      utm:
+        activo: true
+        source: youtube
+      hashtags: ["#tucanal"]
+      # Dónde cae tu cámara en la grabación (fracción 0-1 del lienzo): el asistente te deja marcarla sobre un fotograma.
+      camara:
+        x: 0.7672
+        y: 0.6583
+        w: 0.2172
+        h: 0.2847
+        zoom_cara: 1.7
+      pantalla_zoom:
+        x: 0.08
+        y: 0.08
+        w: 0.66
+        h: 0.78
+
+  # --- Marca por defecto (para tarjetas) ----------------------------------
+  # Cada canal trae la suya (asistente «Nuevo canal», paso 2); esta es la de fábrica.
+  marca:
+    naranja: "#2F6BFF"      # color principal
+    crema: "#F7F9FC"        # fondo
+    beige: "#E7ECF4"        # fondo secundario
+    dorado: "#FFC93C"       # acento
+    tinta: "#101423"        # texto/contorno
+    fuente_texto: "fonts/Rubik-Medium.ttf"
+    fuente_titulo: "fonts/Rubik-ExtraBold.ttf"
+    fuente_numero: "fonts/Rubik-Black.ttf"
+
+  # --- 📷 Tu cámara grabada APARTE (clipper/camara_aparte.py) ---------------
+  # OBS graba además tu cámara en su propio archivo (plugin Source Record: «<fecha hora> camara.mkv», al lado de la
+  # grabación). Si una grabación trae el suyo y se sincroniza con confianza, los tramos «cara» y «explicativa» salen de
+  # ahí, nítidos; si NO lo trae (grabaciones de antes, Source Record apagado) o no cuadra, el vídeo sale EXACTAMENTE como
+  # siempre, con tu recuadro ampliado (el log lo dice). Elegido por el autor el 28-sep entre 3 versiones: la 3, «marco».
+  camara_aparte:
+    activo: true            # false = no la uses nunca (todo como antes)
+    carpeta: ""             # dónde la busca, además de junto a la grabación (la carpeta de grabaciones de OBS, p. ej. "D:/Videos")
+    cara: marco             # marco = tu cámara en un recuadro sobre tu naranja · pantalla = a pantalla completa
+    marco_alto: 0.80        # «marco»: alto del recuadro (0.80 = el 80 % del alto del vídeo)
+    marco_aspecto: 1.0      # «marco»: ancho/alto del recuadro (1.0 = cuadrado; más alto = más ancho, más cuarto)
+
+  # --- CALENDARIO PROPIO de publicación ------------------------------
+  publicar:
+    por_dia: 1           # como mucho 1 vídeo largo al día, todos los días
+    dias_entre: 1        # sin saltarse días
+    horas: "18:00"       # hora por defecto (se aprende sola con el tiempo)
+    horas_min: 5         # vídeos publicados con datos antes de fiarse del rendimiento
+
+  # --- aprendizaje PROPIO de vídeos ---
+  aprendizaje: true
+  min_subidos: 4         # vídeos subidos antes de que el perfil influya
+  peso_gusto: 0.5        # lo que eliges publicar
+  peso_visitas: 0.5      # lo que más se ve
+
+# --- Miniaturas (frame + título, 100% ffmpeg, gratis) -------------
+thumbnail:
+  enabled: true
+  font: impact.ttf       # de C:\Windows\Fonts (impact, seguibl, arialbd...)
+  accent: "#FE330A"       # barra y marco — color principal de tu marca
+  uppercase: true
+
+# --- 🎨 Miniaturas con IA (clipper/miniaturas_ia.py) ------------------------
+# De los prompts A/B/C del director salen 3 miniaturas: el fondo lo dibuja FLUX.2 [klein] 4B en Cloudflare Workers AI
+# (plan gratis: 10.000 neuronas al día; cada miniatura ≈ 156) y el programa pone encima tu cara (mis_caras/), el titular
+# con tu letra y tu naranja exacto. Salen solas al terminar cada vídeo PRO, una detrás de otra. Necesita
+# CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN en el .env (los pones tú). `activo: false` = sin miniaturas con IA.
+# 🖼️ Carrusel para Instagram y TikTok (clipper/carrusel.py; el autor, 11-oct-2026)
+carrusel:
+  # la cara de la PORTADA, al azar con estos pesos (de las que tienes en mis_caras/ sin los brazos abiertos): la mayoría feliz, y unas que prueben otras cosas
+  caras: {feliz: 70, sorpresa: 20, pensando: 10}
+  logo: mi_marca/retrato.webp             # tu retrato (lo subes en el asistente de tu canal) en un círculo abajo a la izquierda, junto al nombre del canal
+  logo_cada: 2                            # en el CIERRE siempre y en un paso de cada 2 («a veces»); 1 = en todos; 0 = solo en el cierre
+
+miniaturas_ia:
+  activo: true
+  tope_dia: 9000          # neuronas que nos permitimos gastar al día (Cloudflare da 10.000 gratis): margen de seguridad
+  reintento_min: 5        # si Cloudflare no responde: 5 min y un reintento; si vuelve a fallar, se queda con las que salieron
+  contorno_px: 6          # el grosor del contorno blanco de tu cara
+  cara_defecto: feliz     # la cara cuando el director no tiene claro cuál poner
+  # La IA de imágenes escribe MAL las letras (el autor, 3-oct-2026): ninguna miniatura lleva texto dibujado por ella. El titular
+  # (2-5 palabras que propone el director) lo escribe el programa con Rubik; Flash-Lite mira cada imagen y, si la IA escribió
+  # texto, se repite con otra semilla.
+  titular: true           # false = miniaturas sin NINGÚN texto (ni siquiera el titular con Rubik)
+  revisa_texto: true      # Flash-Lite mira cada imagen (1 petición de las 500 al día; no toca las 20 de los Flash)
+  reintentos_texto: 2     # como mucho 2 repeticiones por miniatura si la IA escribió texto (≈156 neuronas cada una)
+
+# --- Limpieza de disco -------------------------------------------------
+cleanup:
+  borrar_tras_subir: false  # NO borra nada solo. Al subir a YouTube el vídeo
+                            # queda marcado en verde ("Subido a YouTube") pero
+                            # sigue en tu PC; tú decides cuándo borrarlo con el
+                            # botón "Borrar del PC" tras verificar que está bien.
+
+# --- interfaz web ---
+ui:
+  log_lineas_max: 800   # lineas del registro que se mandan al navegador al
+                        # abrir un trabajo. El fichero completo sigue entero
+                        # en work/<job>/webui.log; esto es solo lo que se
+                        # PINTA, que es lo que costaba caro.

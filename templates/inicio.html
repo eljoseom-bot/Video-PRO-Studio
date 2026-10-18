@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Primeros pasos{% endblock %}
+{% block body %}
+<h1>🚀 Primeros pasos</h1>
+<p class="hint" style="margin:0 0 14px;max-width:760px">Este programa edita tus vídeos con IA. Para eso necesita <b>tus propias claves</b> (cada persona usa las suyas: así nadie gasta la cuota de otro).
+  Todo es <b>gratis</b>, se guarda solo en <b>tu PC</b> (archivo <code>.env</code>, que nunca se sube a Git) y se aplica al momento, sin reiniciar.</p>
+
+<h2>1 · Gemini <span class="badge" id="b-gem" style="font-size:13px">obligatoria</span></h2>
+<section class="card" id="card-gem">
+  <p style="margin:0 0 8px">Es el «director» que analiza tu vídeo: decide los cortes, las tarjetas, los títulos y las miniaturas.</p>
+  <ol style="margin:0 0 6px;padding-left:20px;line-height:1.7">
+    <li>Entra a <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener">AI Studio → API keys</a> con tu cuenta de Google y pulsa <b>Create API key</b>. Cópiala.</li>
+    <li>Pégala aquí. La pruebo con Google (1 petición) y <b>solo si funciona</b> la guardo.</li>
+  </ol>
+  <div class="clave-form">
+    <input type="password" id="gem-clave" autocomplete="new-password" spellcheck="false" placeholder="Pega aquí tu clave de Gemini (empieza por AQ. o AIza…)">
+    <button type="button" class="btn" id="gem-guardar">Probar y guardar</button>
+  </div>
+  <div id="gem-msg" style="font-size:14px;min-height:22px"></div>
+  <p class="hint" style="margin:8px 0 0"><b>No actives la facturación</b> de Google: con el plan gratis, si se acaba un modelo el programa sigue con el siguiente y nunca cobra.
+    En el plan gratis Google puede usar lo que le mandas (la transcripción) para mejorar sus productos: vale para vídeos que vas a publicar, no para material confidencial.</p>
+</section>
+
+<h2>2 · Cloudflare <span class="badge" id="b-cf" style="font-size:13px">opcional</span></h2>
+<section class="card" id="card-cf">
+  <p style="margin:0 0 8px">Solo para las <b>miniaturas con IA</b> (gratis: unas 60 miniaturas al día). Sin esto, todo lo demás funciona y las miniaturas las haces tú con el prompt que te da el programa.</p>
+  <ol style="margin:0 0 6px;padding-left:20px;line-height:1.7">
+    <li>Crea una cuenta gratis en <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">Cloudflare</a> (o entra si ya tienes).</li>
+    <li>Abre <a href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai" target="_blank" rel="noopener">Workers AI</a> → <b>Usar la API REST</b>. Ahí ves tu <b>ID de cuenta</b> (32 caracteres): cópialo.</li>
+    <li>En esa misma pantalla pulsa <b>Crear un token de API</b> con la plantilla <b>Workers AI</b>. Cópialo (solo se muestra una vez).</li>
+  </ol>
+  <div class="clave-form">
+    <input type="text" id="cf-cuenta" autocomplete="off" spellcheck="false" placeholder="ID de cuenta (32 letras y números)">
+    <input type="password" id="cf-token" autocomplete="new-password" spellcheck="false" placeholder="Token de API">
+    <button type="button" class="btn" id="cf-guardar">Probar y guardar</button>
+  </div>
+  <div id="cf-msg" style="font-size:14px;min-height:22px"></div>
+</section>
+
+<h2>3 · Tu canal <span class="badge" id="b-can" style="font-size:13px">recomendado</span></h2>
+<section class="card" id="card-can">
+  <p style="margin:0 0 8px">Aquí le cuentas al programa <b>cómo es TU canal</b>: de qué trata, tus colores y tu letra, tus enlaces, dónde sale tu cámara, tu cara y tu logo, y <b>qué ediciones</b> quieres
+    (escenas, tarjetas, Shorts…). Todo es tuyo y todo se puede cambiar cuando quieras desde «Editar canal». Son 6 pasos cortos.</p>
+  <a class="btn" href="/#nuevo-canal">➕ Crear mi canal</a>
+</section>
+
+<h2>4 · Tu YouTube <span class="badge" id="b-yt" style="font-size:13px">opcional</span></h2>
+<section class="card" id="card-yt">
+  <p style="margin:0 0 8px">Para <b>publicar y programar</b> desde el panel, ver tus métricas y que las ideas usen los datos de tu canal. Cada persona usa <b>su propio proyecto de Google Cloud</b> (gratis): el botón te lleva paso a paso, con capturas.
+    Sin esto, el programa edita igual y tú subes el vídeo a mano.</p>
+  <button type="button" class="btn" onclick="ytAbrirWizard()">▶ Conectar mi YouTube</button>
+</section>
+
+<h2>5 · ¡A editar!</h2>
+<section class="card" id="card-fin">
+  <p style="margin:0 0 10px" id="fin-txt">Falta la clave de Gemini del paso 1.</p>
+  <a class="btn" id="fin-ir" href="/" style="display:none">Ir a Mis vídeos →</a>
+  <a class="btn ghost" id="fin-omitir" href="/inicio/omitir">Entrar sin configurar (solo para mirar)</a>
+  <p class="hint" style="margin:10px 0 0">Más adelante: arriba a la derecha, <b>YouTube</b> conecta tu canal para publicar desde el panel (opcional), y en <b>Uso</b> puedes cambiar la clave de Gemini cuando quieras.</p>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+const bad = t => '<span style="color:var(--bad);font-weight:800">✖ ' + esc(t) + '</span>';
+const ok = t => '<span style="color:var(--ok);font-weight:800">✔ ' + t + '</span>';
+
+async function estado(){
+  try{
+    const e = await (await fetch('/api/inicio/estado')).json();
+    $('b-gem').textContent = e.gemini.hay ? '✔ puesta (…' + e.gemini.ultimos4 + ')' : 'obligatoria';
+    $('b-cf').textContent = e.cloudflare.hay ? '✔ puesta (…' + e.cloudflare.ultimos4 + ')' : 'opcional';
+    $('b-can').textContent = e.canal.hay ? '✔ ' + e.canal.nombres.join(', ') : 'recomendado';
+    $('b-yt').textContent = e.youtube.conectado ? '✔ conectado' : 'opcional';
+    $('fin-txt').textContent = e.listo ? 'Todo listo. Sube tu primera grabación en «Vídeos PRO».' : 'Falta la clave de Gemini del paso 1.';
+    $('fin-ir').style.display = e.listo ? '' : 'none';
+    $('fin-omitir').style.display = e.listo ? 'none' : '';
+  }catch(e){}
+}
+
+async function post(url, cuerpo, msg, btn, esperando){
+  btn.disabled = true; msg.innerHTML = '<span class="muted">' + esperando + '</span>';
+  try{
+    const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cuerpo)});
+    const j = await r.json();
+    btn.disabled = false;
+    return j;
+  }catch(e){ btn.disabled = false; msg.innerHTML = bad('Error: ' + e.message); return null; }
+}
+
+$('gem-guardar').addEventListener('click', async () => {
+  const v = $('gem-clave').value.trim(), msg = $('gem-msg');
+  if(!v){ msg.innerHTML = bad('Pega primero la clave.'); return; }
+  const j = await post('/api/gemini/clave', {clave: v, aparte: true}, msg, $('gem-guardar'), 'Probándola con Google… (puede tardar un minuto si Gemini está saturado)');
+  if(!j) return;
+  if(j.ok){ $('gem-clave').value = ''; msg.innerHTML = ok('Guardada. Termina en …' + esc(j.ultimos4) + ' y funciona (respondió ' + esc(j.modelo) + ').'); estado(); }
+  else msg.innerHTML = bad('No la he guardado. ' + (j.error || 'No se pudo comprobar.'));
+});
+
+$('cf-guardar').addEventListener('click', async () => {
+  const c = $('cf-cuenta').value.trim(), t = $('cf-token').value.trim(), msg = $('cf-msg');
+  if(!c || !t){ msg.innerHTML = bad('Pega el ID de cuenta y el token.'); return; }
+  const j = await post('/api/inicio/cloudflare', {cuenta: c, token: t}, msg, $('cf-guardar'), 'Comprobándolo con Cloudflare…');
+  if(!j) return;
+  if(j.ok){ $('cf-token').value = ''; msg.innerHTML = ok('Guardado. El token termina en …' + esc(j.ultimos4) + ' y Cloudflare lo acepta.'); estado(); }
+  else msg.innerHTML = bad('No lo he guardado. ' + (j.error || 'No se pudo comprobar.'));
+});
+
+for(const [campo, boton] of [['gem-clave', 'gem-guardar'], ['cf-token', 'cf-guardar']])
+  $(campo).addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); $(boton).click(); } });
+estado();
+</script>
+{% endblock %}

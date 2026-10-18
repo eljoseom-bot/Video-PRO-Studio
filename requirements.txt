@@ -1,0 +1,26 @@
+# Video PRO Studio - librerias que se instalan con INSTALAR.bat
+# (la tarjeta grafica NVIDIA es opcional: sus librerias van aparte, en requirements-gpu.txt)
+
+# Nucleo
+numpy>=1.26
+PyYAML>=6.0
+requests>=2.31
+
+# Ingesta (descargar videos de YouTube para los carruseles)
+yt-dlp>=2026.1.1
+
+# Transcripcion local (faster-whisper): gratis, en tu PC
+faster-whisper>=1.1.0
+
+# La IA (Gemini)
+google-genai>=1.0.0
+
+# Panel web local
+flask>=3.0
+
+# Tarjetas, imagenes, carruseles, posts y Shorts se dibujan con Pillow
+Pillow>=10.0
+
+# YouTube: conectar la cuenta, subir/programar videos y leer metricas
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2

@@ -1,0 +1,4 @@
+<nav class="mini-tabs" aria-label="Miniaturas de vídeo o imágenes destacadas de artículos">
+  <a href="/miniaturas" class="{{ 'on' if request.path == '/miniaturas' else '' }}">🎬 Miniaturas de vídeo</a>
+  <a href="/miniaturas-articulos" class="{{ 'on' if request.path.startswith('/miniaturas-articulos') else '' }}">📝 Imágenes destacadas (artículos)</a>
+</nav>

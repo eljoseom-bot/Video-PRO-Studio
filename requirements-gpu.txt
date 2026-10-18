@@ -1,0 +1,4 @@
+# Solo si tienes una tarjeta grafica NVIDIA: hacen que la transcripcion (Whisper) vaya MUCHO mas rapido.
+# INSTALAR.bat las instala solo cuando detecta una NVIDIA. Pesan ~1,5 GB.
+nvidia-cublas-cu12; platform_system == "Windows"
+nvidia-cudnn-cu12; platform_system == "Windows"

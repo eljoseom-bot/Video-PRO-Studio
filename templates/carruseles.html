@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Carruseles{% endblock %}
+{% block body %}
+<h1>🖼️ Carruseles</h1>
+<div class="fuente-tabs" style="margin-bottom:12px" role="tablist">
+  <button type="button" id="tab-yt" class="on" onclick="fuenteTab('yt')">🔗 Desde un vídeo de YouTube</button>
+  <button type="button" id="tab-tx" onclick="fuenteTab('tx')">📝 Desde un artículo o un texto</button>
+</div>
+
+<section class="card" id="panel-yt" style="margin-bottom:16px">
+  <p class="hint" style="margin:0 0 10px;max-width:780px">Pega el <b>enlace de un vídeo de YouTube</b> (uno tuyo ya publicado, por ejemplo) y te armo su carrusel para Instagram y TikTok: lo descargo, lo transcribo en tu PC,
+    la IA propone los pasos, saco las capturas, reviso que cada imagen encaje con su paso y dibujo las diapositivas. Todo gratis (Flash-Lite + tu PC). Tarda unos minutos según lo que dure el vídeo.</p>
+  <label class="mini-lbl" for="car-url">Enlace del vídeo de YouTube</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input type="url" id="car-url" placeholder="https://www.youtube.com/watch?v=…" style="flex:1;min-width:260px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff">
+    <button type="button" class="btn lg" id="car-crear">🖼️ Crear carrusel</button>
+  </div>
+  <div id="car-msg" class="muted" style="margin-top:8px;font-size:13px" aria-live="polite"></div>
+</section>
+
+<section class="card" id="panel-tx" style="margin-bottom:16px;display:none">
+  <p class="hint" style="margin:0 0 10px;max-width:780px">Convierte <b>uno de tus artículos</b> (elígelo de la lista o pega su enlace: solo leo los de tu propia web, desde tu proyecto de Astro) o <b>un texto que estés escribiendo</b>
+    en un carrusel para Instagram y TikTok. La IA saca los pasos <b>solo con lo que dice el texto</b>, acorta cada diapositiva para que se entienda de un vistazo, pone la imagen que mejor
+    la explica y <b>una segunda mirada comprueba que cada imagen ayude a entender su paso</b>. Gasta 2-4 peticiones de Flash-Lite (de las 500 del día; 0 de las 20 de los Flash). No se hace nada solo: solo con este botón.</p>
+  <label class="mini-lbl" for="tx-art">📚 Uno de tus artículos de la web</label>
+  <select id="tx-art" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff" onchange="txElige()"><option value="">— elige uno —</option></select>
+  <label class="mini-lbl" for="tx-url" style="margin-top:10px;display:block">…o el enlace de uno (solo de tu web)</label>
+  <input type="url" id="tx-url" placeholder="https://tu-sitio.example/google/mi-articulo/" oninput="txElige(true)" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff">
+  <label class="mini-lbl" for="tx-texto" style="margin-top:10px;display:block">…o pega un texto (título opcional arriba)</label>
+  <input type="text" id="tx-titulo" maxlength="150" placeholder="Título (opcional)" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff;margin-bottom:6px">
+  <textarea id="tx-texto" rows="7" oninput="txElige(true)" placeholder="Pega aquí el texto (unas 100 palabras como mínimo; mejor 500+)…" style="width:100%;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff"></textarea>
+  <div class="mini-lbl" style="margin-top:10px">Imagen de cada diapositiva</div>
+  <div id="tx-modos" style="display:flex;flex-direction:column;gap:6px;font-size:14px">
+    <label><input type="radio" name="tx-modo" value="auto" checked> <b>Automático</b> — las imágenes del artículo si las hay y encajan; si no, un símbolo animado de tu biblioteca (lupa, candado, gráfica…)</label>
+    <label><input type="radio" name="tx-modo" value="articulo"> Solo imágenes del artículo (las que no encajen salen con símbolo)</label>
+    <label><input type="radio" name="tx-modo" value="simbolo"> Solo símbolos (un icono fijo según lo que dice cada paso)</label>
+    <label><input type="radio" name="tx-modo" value="texto"> Sin imágenes (solo el texto grande)</label>
+  </div>
+  <div style="margin-top:12px"><button type="button" class="btn lg" id="tx-crear" onclick="txCrear()">🖼️ Crear carrusel</button></div>
+  <div id="tx-msg" class="muted" style="margin-top:8px;font-size:13px" aria-live="polite"></div>
+</section>
+
+<div id="car-lista"></div>
+
+<script src="{{ url_for('static', filename='proinfo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='carrusel.js') }}?v={{ ui_v }}"></script>
+<script>
+const $c = id => document.getElementById(id);
+const vistos = new Set();
+
+function tarjeta(it){
+  return `<section class="card" id="car-it-${it.jid}" style="margin-bottom:16px">
+    <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap">
+      <div><b id="car-t-${it.jid}">${esc(it.titulo || it.jid)}</b>
+        <div class="muted" style="font-size:12px">${it.tipo === 'texto'
+          ? '📝 ' + (String(it.origen || '').startsWith('web:') ? 'Artículo de tu web (' + esc(String(it.origen).slice(4)) + ')' : 'Texto pegado')
+          : (it.canal_origen ? esc(it.canal_origen) + ' · ' : '') + '<a href="' + esc(it.enlace) + '" target="_blank" rel="noopener">' + esc(it.enlace) + '</a>'}</div></div>
+      <button type="button" class="btn ghost sm" onclick="borra('${it.jid}')" title="${it.tipo === 'texto' ? 'Borra del PC este carrusel y las imágenes copiadas del artículo (no toca tu web ni tu proyecto de Astro)' : 'Borra del PC el vídeo descargado, su transcripción y este carrusel (no toca YouTube)'}">🗑 Borrar</button>
+    </div>
+    <div id="car-slot-${it.jid}" style="margin-top:10px"></div>
+  </section>`;
+}
+
+async function carga(){
+  let d;
+  try{ d = await (await fetch('/api/carruseles')).json(); }catch(e){ return; }
+  const cont = $c('car-lista');
+  const ids = d.items.map(i => i.jid);
+  [...cont.children].forEach(ch => { if(!ids.includes(ch.id.replace('car-it-', ''))){ ch.remove(); vistos.delete(ch.id.replace('car-it-', '')); } });
+  d.items.forEach(it => {
+    if(vistos.has(it.jid)){ const tt = $c('car-t-' + it.jid); if(tt && it.titulo && tt.textContent !== it.titulo) tt.textContent = it.titulo; return; }
+    vistos.add(it.jid);
+    cont.insertAdjacentHTML('afterbegin', tarjeta(it));
+    carruselSlot(it.jid, $c('car-slot-' + it.jid));
+  });
+  if(!d.items.length) cont.innerHTML = '<p class="muted">Aún no has hecho ningún carrusel desde un enlace o un texto.</p>';
+}
+
+async function crear(){
+  const url = $c('car-url').value.trim();
+  if(!url){ $c('car-msg').textContent = 'Pega primero el enlace del vídeo.'; return; }
+  $c('car-crear').disabled = true; $c('car-msg').textContent = 'Empezando…';
+  try{
+    const r = await (await fetch('/api/carruseles/enlace', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url})})).json();
+    if(!r.ok){ $c('car-msg').textContent = '⚠ ' + (r.error || 'No se pudo empezar.'); return; }
+    $c('car-msg').textContent = r.ya ? 'Ese vídeo ya se está procesando: mira abajo.' : 'En marcha: sigue el progreso abajo (puedes dejar esta página abierta).';
+    $c('car-url').value = '';
+    vistos.delete(r.jid);
+    const viejo = $c('car-it-' + r.jid); if(viejo) viejo.remove();
+    $c('car-lista').querySelectorAll('p.muted').forEach(p => p.remove());
+    vistos.add(r.jid);
+    $c('car-lista').insertAdjacentHTML('afterbegin', tarjeta({jid: r.jid, titulo: r.jid, enlace: url, canal_origen: ''}));
+    carruselSlot(r.jid, $c('car-slot-' + r.jid));
+  }catch(e){ $c('car-msg').textContent = '⚠ Sin conexión con el panel.'; }
+  finally{ $c('car-crear').disabled = false; }
+}
+
+async function borra(jid){
+  if(!confirm(jid.startsWith('texto-') ? '¿Borrar este carrusel del PC? (No toca tu web ni tu proyecto de Astro.)' : '¿Borrar este carrusel y el vídeo descargado del PC? (No toca el vídeo de YouTube.)')) return;
+  const r = await (await fetch('/api/carruseles/' + encodeURIComponent(jid) + '/borrar', {method: 'POST'})).json();
+  if(r.ok){ vistos.delete(jid); carga(); } else alert(r.error || 'No se pudo borrar.');
+}
+
+// ---- carrusel desde un artículo o un texto
+function fuenteTab(k){
+  $c('panel-yt').style.display = k === 'yt' ? '' : 'none'; $c('panel-tx').style.display = k === 'tx' ? '' : 'none';
+  $c('tab-yt').classList.toggle('on', k === 'yt'); $c('tab-tx').classList.toggle('on', k === 'tx');
+  try{ localStorage.setItem('car_fuente', k); }catch(e){}
+  if(k === 'tx') txCargaArticulos();
+}
+let _txCargado = false;
+async function txCargaArticulos(){
+  if(_txCargado) return;
+  try{
+    const d = await (await fetch('/api/articulos-sueltos/sitio')).json();
+    const sel = $c('tx-art');
+    (d.articulos || []).forEach(a => sel.insertAdjacentHTML('beforeend', `<option value="${esc(a.id)}">${esc(a.titulo)} · ${esc(a.categoria)}</option>`));
+    if(!(d.articulos || []).length) $c('tx-msg').textContent = d.configurado === false ? 'No encuentro tu proyecto de Astro (configúralo en config.yaml): puedes pegar el texto.' : 'No encuentro artículos publicados en tu proyecto.';
+    _txCargado = true;
+  }catch(e){}
+}
+function txElige(otro){            // (solo se usa UNA fuente a la vez: lo último que tocas manda)
+  if(otro){ if($c('tx-url').value.trim() || $c('tx-texto').value.trim()) $c('tx-art').value = ''; }
+  else { $c('tx-url').value = ''; $c('tx-texto').value = ''; }
+}
+async function txCrear(){
+  const cuerpo = {articulo_id: $c('tx-art').value, url: $c('tx-url').value.trim(), texto: $c('tx-texto').value, titulo: $c('tx-titulo').value.trim(),
+                  modo_imagen: (document.querySelector('input[name=tx-modo]:checked') || {}).value || 'auto'};
+  if(!cuerpo.articulo_id && !cuerpo.url && cuerpo.texto.trim().length < 400){ $c('tx-msg').textContent = 'Elige un artículo, pega su enlace o pega un texto de unas 100 palabras como mínimo.'; return; }
+  $c('tx-crear').disabled = true; $c('tx-msg').textContent = 'Preparando el texto…';
+  try{
+    const r = await (await fetch('/api/carruseles/texto', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cuerpo)})).json();
+    if(!r.ok){ $c('tx-msg').textContent = '⚠ ' + (r.error || 'No se pudo empezar.'); return; }
+    $c('tx-msg').textContent = r.ya ? 'Ese carrusel ya se está haciendo: mira abajo.' : 'En marcha: sigue el progreso abajo (1-2 minutos; puedes dejar esta página abierta).';
+    vistos.delete(r.jid);
+    const viejo = $c('car-it-' + r.jid); if(viejo) viejo.remove();
+    $c('car-lista').querySelectorAll('p.muted').forEach(p => p.remove());
+    vistos.add(r.jid);
+    $c('car-lista').insertAdjacentHTML('afterbegin', tarjeta({jid: r.jid, titulo: cuerpo.titulo || 'Carrusel desde un texto', tipo: 'texto', origen: cuerpo.articulo_id ? 'web:' + cuerpo.articulo_id : 'texto'}));
+    carruselSlot(r.jid, $c('car-slot-' + r.jid));
+  }catch(e){ $c('tx-msg').textContent = '⚠ Sin conexión con el panel.'; }
+  finally{ $c('tx-crear').disabled = false; }
+}
+try{ if(localStorage.getItem('car_fuente') === 'tx') fuenteTab('tx'); }catch(e){}
+
+$c('car-crear').addEventListener('click', crear);
+$c('car-url').addEventListener('keydown', e => { if(e.key === 'Enter') crear(); });
+carga();
+setInterval(carga, 10000);
+</script>
+{% endblock %}

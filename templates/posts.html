@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Posts{% endblock %}
+{% block body %}
+<h1>📣 Posts</h1>
+<p class="hint" style="margin:0 0 14px;max-width:800px">Una <b>sola idea</b> en 1 o 2 imágenes (no es un carrusel), con tu estilo, lista para <b>Instagram (4:5)</b> y para <b>LinkedIn, Bluesky, Discord, Reddit y YouTube (16:9)</b>.
+  Sale de un vídeo tuyo, de un artículo de tu web, de un texto o del enlace de un vídeo de YouTube. La portada cambia con el mismo peso entre <b>tu cara</b>, <b>tu logo</b> y <b>tu retrato en cómic</b>.
+  Gasta 1 petición a Flash-Lite (de las 500 del día; 0 de las 20 de los Flash). Nada se hace solo.</p>
+
+<section class="card" style="margin-bottom:16px">
+  <div class="fuente-tabs" style="margin-bottom:12px" role="tablist">
+    <button type="button" id="pt-video" class="on" onclick="poTab('video')">🎬 Un vídeo mío</button>
+    <button type="button" id="pt-art" onclick="poTab('art')">📚 Un artículo de mi web</button>
+    <button type="button" id="pt-texto" onclick="poTab('texto')">📝 Un texto</button>
+    <button type="button" id="pt-yt" onclick="poTab('yt')">🔗 Enlace de YouTube</button>
+  </div>
+  <div id="pp-video">
+    <label class="mini-lbl" for="po-video">Uno de tus vídeos ya editados</label>
+    <select id="po-video" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff"><option value="">— elige uno —</option></select>
+  </div>
+  <div id="pp-art" style="display:none">
+    <label class="mini-lbl" for="po-art">Uno de tus artículos publicados</label>
+    <select id="po-art" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff"><option value="">— elige uno —</option></select>
+    <label class="mini-lbl" for="po-url" style="margin-top:10px;display:block">…o su enlace (solo de tu web)</label>
+    <input type="url" id="po-url" placeholder="https://tu-sitio.example/google/mi-articulo/" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff">
+  </div>
+  <div id="pp-texto" style="display:none">
+    <input type="text" id="po-titulo" maxlength="150" placeholder="Título (opcional)" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff;margin-bottom:6px">
+    <textarea id="po-texto" rows="7" placeholder="Pega aquí el texto (unas 100 palabras como mínimo)…" style="width:100%;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff"></textarea>
+  </div>
+  <div id="pp-yt" style="display:none">
+    <label class="mini-lbl" for="po-yt">Enlace de un vídeo de YouTube (público)</label>
+    <input type="url" id="po-yt" placeholder="https://www.youtube.com/watch?v=…" style="width:100%;max-width:640px;font:inherit;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fff">
+    <p class="muted" style="font-size:12.5px;margin:6px 0 0">Lo descargo y lo transcribo en tu PC (unos minutos) antes de sacar la idea.</p>
+  </div>
+  <div style="margin-top:12px"><button type="button" class="btn lg" id="po-crear" onclick="poCrear()">📣 Crear post</button></div>
+  <div id="po-msg" class="muted" style="margin-top:8px;font-size:13px" aria-live="polite"></div>
+</section>
+
+<div id="posts-estado"></div>
+<div id="posts-lista"></div>
+
+<style>
+.post-imgs{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0;max-width:100%}
+.post-imgs>a{display:block;flex:0 1 auto;min-width:0;max-width:100%}
+.post-img{display:block;border:2px solid var(--ink);border-radius:10px;background:#fff;max-width:100%;height:auto;box-sizing:border-box}
+.post-img.post-v{width:340px}
+.post-img.post-s{width:420px}
+.post-img.post-w{width:560px}
+</style>
+<script src="{{ url_for('static', filename='proinfo.js') }}?v={{ ui_v }}"></script>
+<script src="{{ url_for('static', filename='posts.js') }}?v={{ ui_v }}"></script>
+<script>
+const $p = id => document.getElementById(id);
+let _poTab = 'video', _poArt = false;
+function poTab(k){
+  _poTab = k;
+  ['video', 'art', 'texto', 'yt'].forEach(x => { $p('pp-' + x).style.display = x === k ? '' : 'none'; $p('pt-' + x).classList.toggle('on', x === k); });
+  if(k === 'art' && !_poArt){
+    _poArt = true;
+    fetch('/api/articulos-sueltos/sitio').then(r => r.json()).then(d => (d.articulos || []).forEach(a => $p('po-art').insertAdjacentHTML('beforeend',
+      `<option value="${esc(a.id)}">${esc(a.titulo)} · ${esc(a.categoria)}</option>`))).catch(() => {});
+  }
+}
+async function poCrear(){
+  let cuerpo = {};
+  if(_poTab === 'video') cuerpo = {jid: $p('po-video').value};
+  else if(_poTab === 'art') cuerpo = {articulo_id: $p('po-art').value, url: $p('po-url').value.trim()};
+  else if(_poTab === 'texto') cuerpo = {texto: $p('po-texto').value, titulo: $p('po-titulo').value.trim()};
+  else cuerpo = {youtube: $p('po-yt').value.trim()};
+  if(_poTab === 'video' && !cuerpo.jid){ $p('po-msg').textContent = 'Elige primero uno de tus vídeos.'; return; }
+  await postCrea(cuerpo, $p('po-crear'), $p('po-msg'));
+}
+postsPagina();
+</script>
+{% endblock %}

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Imágenes destacadas{% endblock %}
+{% block body %}
+{% include "_tabs_miniaturas.html" %}
+<h1>📝 Imágenes destacadas</h1>
+<p class="hint" style="margin:0 0 14px;max-width:800px">La <b>imagen destacada</b> de un artículo de tu web, sin vídeo (no es una miniatura de YouTube): una viñeta de cómic en <b>blanco y negro</b>, profesional, que enseña <b>lo que explica ESE artículo</b> (no algo genérico).
+  Elige uno de los que ya tienes publicados, o cuenta de qué va uno nuevo (escribiendo, dictando o pegando su texto). Es gratis (Cloudflare) y no toca las peticiones de los Flash que editan tus vídeos.</p>
+
+<section class="card mini-form" id="art-form">
+  <div class="art-sitio" id="art-sitio" style="display:none">
+    <label class="mini-lbl" for="art-elige" style="margin:0">📚 Uno de tus artículos de la web</label>
+    <select id="art-elige"><option value="">— elige uno para ponerle una imagen nueva —</option></select>
+  </div>
+
+  <label class="mini-campo" style="margin:0 0 12px;max-width:640px"><span>Título del artículo <span class="muted">(opcional)</span></span>
+    <input type="text" id="art-titulo" maxlength="150" placeholder="Ej: Guía de Schema Markup y datos estructurados para SEO"></label>
+
+  <label class="mini-lbl" for="mej-txt-articulo">¿De qué va el artículo?</label>
+  <div class="mini-fila">
+    <textarea id="mej-txt-articulo" rows="6" maxlength="6000" spellcheck="true"
+      placeholder="Ej: Cómo usar etiquetas canonical para evitar contenido duplicado: qué es la URL canónica, dónde se pone en el head y cómo comprobar en Search Console que Google la respeta. (Cuanto más específico, más específica sale la imagen. Puedes pegar el texto del artículo.)"></textarea>
+    <button type="button" class="dictado-btn" id="dictado-btn-articulo" title="Dictar por voz" onclick="dictadoToggle('articulo')" style="display:none">🎤</button>
+  </div>
+  <div class="mini-ayuda"><span id="dictado-estado-articulo"></span><span class="muted" id="art-cuenta"></span></div>
+
+  <div class="mini-acciones">
+    <button type="button" class="btn lg" id="art-generar">🎨 Generar imagen destacada</button>
+    <div id="art-cupo" class="mini-cupo"></div>
+  </div>
+  <div id="art-msg" class="mini-msg" aria-live="polite"></div>
+</section>
+
+<section id="art-res" class="mini-res" style="display:none"></section>
+
+<section id="art-hist-caja" style="display:none">
+  <h2 style="margin:22px 0 8px">Las últimas</h2>
+  <div class="mini-tira" id="art-tira"></div>
+</section>
+
+<script src="{{ url_for('static', filename='mejorar.js') }}?v={{ ui_v }}"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const S = {items: [], sel: null, imagen: null, generando: false, paso: '', inicio: 0, datos: null};
+let tPoll = null, tReloj = null;
+
+function form(){ return {texto: $('mej-txt-articulo').value.trim(), titulo: $('art-titulo').value.trim()}; }
+function ponForm(it){                                // al elegir una idea de «Las últimas», el formulario se llena con lo que la hizo (así «↻» parte de ella)
+  $('mej-txt-articulo').value = it.texto || '';
+  $('art-titulo').value = it.titulo || '';
+  cuenta();
+}
+function cuenta(){ const n = $('mej-txt-articulo').value.length; $('art-cuenta').textContent = n ? n + ' / ' + (S.datos ? S.datos.max_texto : 6000) : ''; }
+
+function pintaCupo(){
+  const d = S.datos; if(!d) return;
+  const c = d.cupo, b = c.bateria, poco = c.quedan <= 3;
+  const rest = c.max ? Math.round(100 * c.quedan / c.max) : 0;
+  $('art-cupo').innerHTML = `<span class="cupo-barra ${rest < 10 ? 'mal' : (rest < 30 ? 'aviso' : '')}" title="Te quedan ${c.quedan} de ${c.max}"><i style="width:${rest}%"></i></span>Hoy: <b class="${poco ? 'mini-poco' : ''}">${c.usadas} de ${c.max}</b> llamadas a Cloudflare usadas en imágenes de artículo · quedan <b class="${poco ? 'mini-poco' : ''}">${c.quedan}</b>
+    <span class="muted">(cada intento cuenta, también los reintentos; las comparte con la imagen destacada de cada vídeo) · se reinicia a las ${esc(c.recarga)}</span><br>
+    <span class="muted">Cupo gratis de Cloudflare de hoy (se comparte con las miniaturas de tus vídeos): ${b.usadas} de ${b.tope} neuronas, caben ≈ ${b.quedan_miniaturas} imágenes más.</span>`;
+}
+
+function pintaEstado(){
+  $('art-generar').disabled = S.generando;
+  const msg = $('art-msg');
+  if(S.generando){
+    const s = Math.round((Date.now() - S.inicio) / 1000);
+    msg.innerHTML = `<span class="mini-giro"></span> ${esc(S.paso || 'Trabajando…')} <span class="muted">· ${s} s · puedes seguir con otra cosa, esto no se pierde</span>`;
+  } else if(S.datos && S.datos.error){
+    msg.innerHTML = `<div class="callout bad">✖ ${esc(S.datos.error)}</div>`;
+  } else if(S.datos && !S.datos.disponible){
+    msg.innerHTML = `<div class="callout warn">⚠ ${esc(S.datos.motivo)} <a href="/inicio">Abrir «Primeros pasos»</a></div>`;
+  } else msg.innerHTML = '';
+}
+
+function pintaResultado(){
+  const caja = $('art-res'), it = S.items.find(x => x.id === S.sel);
+  if(!it){ caja.style.display = 'none'; return; }
+  caja.style.display = '';
+  const img = it.imagenes.find(i => i.archivo === S.imagen) || it.imagenes[it.imagenes.length - 1];
+  S.imagen = img.archivo;
+  const cuando = new Date(it.ts * 1000).toLocaleString('es', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+  caja.innerHTML = `
+    <div class="mini-visor"><img src="${esc(img.url)}" alt="${esc(it.alt)}">
+      ${it.imagenes.length > 1 ? `<div class="art-variantes" style="padding:8px;background:var(--card)">${it.imagenes.map(i => `
+        <button type="button" class="art-var${i.archivo === S.imagen ? ' on' : ''}" onclick="eligeImagen('${esc(i.archivo)}')"><img loading="lazy" src="${esc(i.url)}" alt=""></button>`).join('')}</div>` : ''}
+    </div>
+    <div class="mini-info">
+      ${img.con_texto ? '<div class="callout warn" style="margin:0 0 8px">⚠ La IA puede haber escrito algo de texto en el dibujo: si lo ves, pulsa «↻ Otra».</div>' : ''}
+      <div class="mini-btns">
+        <a class="btn descargar" href="${esc(img.descarga)}" title="Se guarda como ${esc(img.nombre)} (JPG 1280×720)">⬇ Descargar</a>
+        <button type="button" class="btn alt" id="art-otra" ${S.generando ? 'disabled' : ''}
+          title="La MISMA escena con otro dibujo (sin gastar Gemini). Si cambiaste el texto o el título de arriba, es una idea nueva.">↻ Otra</button>
+        <button type="button" class="btn ghost" id="art-otra-idea" ${S.generando ? 'disabled' : ''} title="Otra escena distinta para este mismo artículo (1 petición a Flash-Lite)">💡 Otra idea</button>
+        <button type="button" class="btn ghost" id="art-quitar" title="Quitar esta idea (y sus variantes) de «Las últimas»">🗑 Quitar</button>
+      </div>
+      <p class="muted" style="font-size:13px;margin:10px 0 0">
+        ${it.tema ? `<b>Tema:</b> ${esc(it.tema)}<br>` : ''}
+        ${(it.objetos || []).length ? `<b>Lo que enseña:</b></p><ul class="art-obj">${it.objetos.map(o => `<li>${esc(o)}</li>`).join('')}</ul><p class="muted" style="font-size:13px;margin:6px 0 0">` : ''}
+        ${it.nombre_modelo ? esc(it.nombre_modelo) + ' · ' : ''}${Math.round(img.segundos || 0)} s · ${esc(cuando)}
+      </p>
+    </div>`;
+  $('art-otra').onclick = () => genera(false);
+  $('art-otra-idea').onclick = () => genera(true);
+  $('art-quitar').onclick = quita;
+}
+
+function pintaTira(){
+  $('art-hist-caja').style.display = S.items.length ? '' : 'none';
+  $('art-tira').innerHTML = S.items.map(it => `
+    <button type="button" class="mini-mini${it.id === S.sel ? ' on' : ''}" onclick="elige('${esc(it.id)}')" title="${esc(it.titulo || it.tema || it.texto)}">
+      <img loading="lazy" src="${esc(it.imagenes[it.imagenes.length - 1].url)}" alt=""></button>`).join('');
+}
+
+function elige(id){ S.sel = id; S.imagen = null; const it = S.items.find(x => x.id === id); if(it) ponForm(it); pintaResultado(); pintaTira(); }
+function eligeImagen(a){ S.imagen = a; pintaResultado(); }
+function repinta(){ pintaCupo(); pintaEstado(); pintaResultado(); pintaTira(); }
+
+async function carga(){
+  let d;
+  try{ d = await (await fetch('/api/articulos-sueltos')).json(); }catch(e){ return; }
+  const primera = !S.datos, eraGenerando = S.generando;
+  S.datos = d; S.items = d.items; S.generando = d.estado === 'generando'; S.paso = d.paso;
+  if(S.generando && !S.inicio) S.inicio = Date.now();
+  if(primera){ if(d.items.length){ S.sel = d.items[0].id; ponForm(d.items[0]); } }
+  else if(eraGenerando && !S.generando){            // acaba de terminar: se enseña la nueva (la primera de la lista) con su última variante
+    S.inicio = 0;
+    if(!d.error && d.items.length){ S.sel = d.items[0].id; S.imagen = null; ponForm(d.items[0]); }
+  }
+  if(!S.generando) S.inicio = 0;
+  if(eraGenerando && !S.generando && typeof cuotasRefresca === 'function') cuotasRefresca();     // la franja de arriba se pone al día al terminar
+  repinta();
+  clearTimeout(tPoll); tPoll = setTimeout(carga, S.generando ? 1500 : 15000);
+  clearInterval(tReloj); if(S.generando) tReloj = setInterval(pintaEstado, 1000);
+}
+
+async function genera(nuevaIdea, desde){
+  const f = form(), msg = $('art-msg');
+  if(f.texto.length < ((S.datos || {}).min_texto || 6)){
+    msg.innerHTML = '<div class="callout bad">✖ Cuéntale con unas palabras de qué va el artículo (el tema, o pega su texto, o elige uno de tu web).</div>';
+    $('mej-txt-articulo').focus(); return;
+  }
+  $('art-generar').disabled = true;
+  S.generando = true; S.paso = 'Empezando…'; S.inicio = Date.now(); if(S.datos) S.datos.error = '';
+  pintaEstado();
+  try{
+    const r = await fetch('/api/articulos-sueltos/generar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({...f, nueva_idea: !!nuevaIdea, de: desde === false ? null : S.sel})});
+    const j = await r.json();
+    if(!j.ok){ S.generando = false; S.inicio = 0; msg.innerHTML = `<div class="callout bad">✖ ${esc(j.error || 'No se pudo empezar.')}</div>`; $('art-generar').disabled = false; return; }
+  }catch(e){ S.generando = false; S.inicio = 0; msg.innerHTML = `<div class="callout bad">✖ No se pudo hablar con el panel: ${esc(e.message)}</div>`; $('art-generar').disabled = false; return; }
+  carga();
+}
+
+async function quita(){
+  if(!S.sel || !confirm('¿Quitar esta idea y sus imágenes de «Las últimas»? Se borran del PC.')) return;
+  try{ await fetch('/api/articulos-sueltos/' + encodeURIComponent(S.sel) + '/borrar', {method: 'POST'}); }catch(e){}
+  S.sel = null; S.imagen = null;
+  await carga();
+  if(S.items.length){ S.sel = S.items[0].id; ponForm(S.items[0]); repinta(); }
+}
+
+/* uno de tus artículos de la web */
+async function cargaSitio(){
+  let d;
+  try{ d = await (await fetch('/api/articulos-sueltos/sitio')).json(); }catch(e){ return; }
+  if(!d.configurado || !d.articulos.length) return;
+  $('art-sitio').style.display = '';
+  $('art-elige').innerHTML = '<option value="">— elige uno para ponerle una imagen nueva —</option>' +
+    d.articulos.map(a => `<option value="${esc(a.id)}">${esc(a.titulo)} (${esc(a.categoria)})</option>`).join('');
+}
+async function eligeSitio(){
+  const id = $('art-elige').value; if(!id) return;
+  const [cat, slug] = id.split('/');
+  $('art-msg').innerHTML = '<span class="mini-giro"></span> Leyendo el artículo…';
+  try{
+    const a = await (await fetch(`/api/articulos-sueltos/sitio/${encodeURIComponent(cat)}/${encodeURIComponent(slug)}`)).json();
+    if(!a.ok) throw new Error(a.error || 'No se pudo leer.');
+    $('art-titulo').value = a.titulo;
+    $('mej-txt-articulo').value = ((a.descripcion ? a.descripcion + ' ' : '') + a.texto).slice(0, (S.datos || {}).max_texto || 6000);
+    S.sel = null; S.imagen = null;                    // es una idea NUEVA (otro texto), no un «↻» de la que había en pantalla
+    cuenta(); $('art-msg').innerHTML = '';
+    pintaResultado(); pintaTira();
+  }catch(e){ $('art-msg').innerHTML = `<div class="callout bad">✖ ${esc(e.message)}</div>`; }
+}
+
+$('art-generar').addEventListener('click', () => genera(false, false));
+$('art-elige').addEventListener('change', eligeSitio);
+$('mej-txt-articulo').addEventListener('input', cuenta);
+$('mej-txt-articulo').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); genera(false, false); } });
+if(typeof SOPORTA_DICTADO !== 'undefined' && SOPORTA_DICTADO) $('dictado-btn-articulo').style.display = '';
+cargaSitio();
+carga();
+</script>
+{% endblock %}

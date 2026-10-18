@@ -1,0 +1,15 @@
+# Git normaliza el texto, PERO los lanzadores de Windows se guardan tal cual (con saltos CRLF): un .bat con saltos LF
+# rompe las etiquetas (:LABEL / goto) al descargar el .zip de GitHub.
+* text=auto
+*.cmd -text
+*.bat -text
+*.ps1 -text
+*.py  text eol=lf
+
+# Binarios: que Git nunca los toque
+*.ttf binary
+*.wav binary
+*.mp3 binary
+*.jpg binary
+*.png binary
+*.webp binary
